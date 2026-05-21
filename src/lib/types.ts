@@ -32,6 +32,7 @@ export interface WhatsAppContact {
   last_message_at: string | null
   classification: string | null
   score: number | null
+  last_message_from_me?: boolean | null
   ai_analysis_summary: string | null
   ai_agent_id: string | null
   pipeline_stage?: string | null

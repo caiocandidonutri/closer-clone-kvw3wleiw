@@ -74,11 +74,19 @@ export function ContactFeed() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {contact.score !== null && contact.score > 0 && (
+                  {contact.last_message_from_me === false ? (
+                    <div className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-md tabular-nums">
+                      Waiting
+                    </div>
+                  ) : contact.last_message_from_me === true ? (
+                    <div className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-md tabular-nums">
+                      Responded
+                    </div>
+                  ) : contact.score !== null && contact.score > 0 ? (
                     <div className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md tabular-nums">
                       {contact.score} pts
                     </div>
-                  )}
+                  ) : null}
                   {contact.last_message_at && (
                     <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1 group-hover:text-zinc-600 transition-colors">
                       <Clock className="h-3 w-3" />

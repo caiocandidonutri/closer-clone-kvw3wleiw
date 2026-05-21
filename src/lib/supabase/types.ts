@@ -165,6 +165,7 @@ export type Database = {
           classification: string | null
           created_at: string | null
           id: string
+          instance_id: string | null
           last_message_at: string | null
           phone_number: string | null
           pipeline_stage: string | null
@@ -180,6 +181,7 @@ export type Database = {
           classification?: string | null
           created_at?: string | null
           id?: string
+          instance_id?: string | null
           last_message_at?: string | null
           phone_number?: string | null
           pipeline_stage?: string | null
@@ -195,6 +197,7 @@ export type Database = {
           classification?: string | null
           created_at?: string | null
           id?: string
+          instance_id?: string | null
           last_message_at?: string | null
           phone_number?: string | null
           pipeline_stage?: string | null
@@ -210,6 +213,13 @@ export type Database = {
             columns: ['ai_agent_id']
             isOneToOne: false
             referencedRelation: 'ai_agents'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'whatsapp_contacts_instance_id_fkey'
+            columns: ['instance_id']
+            isOneToOne: false
+            referencedRelation: 'user_integrations'
             referencedColumns: ['id']
           },
         ]
@@ -468,6 +478,7 @@ export const Constants = {
 //   phone_number: text (nullable)
 //   ai_agent_id: uuid (nullable)
 //   pipeline_stage: text (nullable, default: 'Em Espera'::text)
+//   instance_id: uuid (nullable)
 // Table: whatsapp_messages
 //   id: uuid (not null, default: gen_random_uuid())
 //   user_id: uuid (not null)
@@ -494,12 +505,12 @@ export const Constants = {
 // Table: user_integrations
 //   PRIMARY KEY user_integrations_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY user_integrations_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
-//   UNIQUE user_integrations_user_id_key: UNIQUE (user_id)
 // Table: whatsapp_contacts
 //   FOREIGN KEY whatsapp_contacts_ai_agent_id_fkey: FOREIGN KEY (ai_agent_id) REFERENCES ai_agents(id) ON DELETE SET NULL
+//   FOREIGN KEY whatsapp_contacts_instance_id_fkey: FOREIGN KEY (instance_id) REFERENCES user_integrations(id) ON DELETE CASCADE
 //   PRIMARY KEY whatsapp_contacts_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY whatsapp_contacts_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
-//   UNIQUE whatsapp_contacts_user_id_remote_jid_key: UNIQUE (user_id, remote_jid)
+//   UNIQUE whatsapp_contacts_user_instance_jid_key: UNIQUE (user_id, instance_id, remote_jid)
 // Table: whatsapp_messages
 //   FOREIGN KEY whatsapp_messages_contact_id_fkey: FOREIGN KEY (contact_id) REFERENCES whatsapp_contacts(id) ON DELETE CASCADE
 //   PRIMARY KEY whatsapp_messages_pkey: PRIMARY KEY (id)
@@ -584,10 +595,8 @@ export const Constants = {
 //   CREATE UNIQUE INDEX idx_contact_identity_instance_phone ON public.contact_identity USING btree (instance_id, canonical_phone)
 //   CREATE INDEX idx_contact_identity_lid_jid ON public.contact_identity USING btree (lid_jid)
 //   CREATE INDEX idx_contact_identity_phone_jid ON public.contact_identity USING btree (phone_jid)
-// Table: user_integrations
-//   CREATE UNIQUE INDEX user_integrations_user_id_key ON public.user_integrations USING btree (user_id)
 // Table: whatsapp_contacts
 //   CREATE INDEX whatsapp_contacts_phone_number_idx ON public.whatsapp_contacts USING btree (user_id, phone_number)
-//   CREATE UNIQUE INDEX whatsapp_contacts_user_id_remote_jid_key ON public.whatsapp_contacts USING btree (user_id, remote_jid)
+//   CREATE UNIQUE INDEX whatsapp_contacts_user_instance_jid_key ON public.whatsapp_contacts USING btree (user_id, instance_id, remote_jid)
 // Table: whatsapp_messages
 //   CREATE UNIQUE INDEX whatsapp_messages_user_id_message_id_key ON public.whatsapp_messages USING btree (user_id, message_id)

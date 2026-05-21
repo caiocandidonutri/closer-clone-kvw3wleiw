@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useAgents } from '@/hooks/use-agents'
 import { useIntegration } from '@/hooks/use-integration'
 import { useLanguage, TranslationKey } from '@/hooks/use-language'
+import { useContacts } from '@/hooks/use-contacts'
 import { WhatsAppContact, WhatsAppMessage } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { contacts } = useContacts('')
 
   useEffect(() => {
     if (!user || !id) return
@@ -179,8 +181,57 @@ export default function Chat() {
   })
 
   return (
-    <div className="max-w-5xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple">
-      <div className="w-full h-full flex flex-col bg-card border border-border/60 shadow-elevation rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden">
+    <div className="max-w-7xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple flex gap-6">
+      <div className="hidden lg:flex w-80 flex-col bg-card border border-border/60 shadow-elevation rounded-[2.5rem] overflow-hidden shrink-0 h-full">
+        <div className="p-6 border-b border-border/40 bg-muted/20">
+          <h3 className="font-bold text-xl tracking-tight">Global Inbox</h3>
+          <p className="text-[13px] text-muted-foreground font-semibold mt-1">
+            All connected numbers
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin">
+          {contacts.map((c) => (
+            <div
+              key={c.id}
+              onClick={() => navigate(`/app/chat/${c.id}`)}
+              className={cn(
+                'flex items-center gap-3.5 p-3.5 rounded-2xl cursor-pointer transition-colors group',
+                c.id === id ? 'bg-primary/10 shadow-sm' : 'hover:bg-muted',
+              )}
+            >
+              <Avatar className="h-11 w-11 border border-border shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-300">
+                <AvatarImage src={c.profile_picture_url || ''} />
+                <AvatarFallback className="bg-background text-sm font-bold">
+                  {c.push_name?.charAt(0) || '#'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 overflow-hidden">
+                <div className="flex justify-between items-center mb-0.5">
+                  <p
+                    className={cn(
+                      'font-bold text-[14px] truncate',
+                      c.id === id ? 'text-primary' : 'text-foreground',
+                    )}
+                  >
+                    {c.push_name || 'Unknown'}
+                  </p>
+                  {c.last_message_from_me === false && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-sm" />
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-bold truncate tracking-tight shadow-sm border border-border/60">
+                    {integrations.find((i) => i.id === (c as any).instance_id)?.instance_name ||
+                      'WhatsApp'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 h-full flex flex-col bg-card border border-border/60 shadow-elevation rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-5 bg-background/50 backdrop-blur-xl border-b border-border/40 z-10 shrink-0">
           <div className="flex items-center gap-3 sm:gap-4">

@@ -11,13 +11,69 @@ import {
   AlertCircle,
   PowerOff,
   ShieldCheck,
+  Plus,
 } from 'lucide-react'
-import { useIntegration } from '@/hooks/use-integration'
+import { useIntegration, UserIntegration } from '@/hooks/use-integration'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 export function ConnectionCard() {
-  const { integration, setIntegration, loading: integrationLoading } = useIntegration()
+  const {
+    integrations,
+    addIntegration,
+    loading: integrationLoading,
+    refreshIntegrations,
+  } = useIntegration()
+
+  if (integrationLoading) {
+    return (
+      <Card className="shadow-subtle border-border/40 rounded-3xl">
+        <CardHeader className="pb-4">
+          <Skeleton className="h-6 w-48 mb-2 rounded-md" />
+          <Skeleton className="h-4 w-64 rounded-md" />
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center p-6 min-h-[250px]">
+            <Skeleton className="w-48 h-48 rounded-2xl" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {integrations.map((integration, index) => (
+        <SingleConnectionCard
+          key={integration.id}
+          integration={integration}
+          index={index + 1}
+          onStatusChange={refreshIntegrations}
+        />
+      ))}
+      {integrations.length < 2 && (
+        <Button
+          onClick={() => addIntegration()}
+          variant="outline"
+          className="w-full h-16 border-dashed rounded-3xl border-2 hover:bg-muted/50 transition-colors text-muted-foreground font-semibold"
+        >
+          <Plus className="mr-2 h-5 w-5" />
+          Add WhatsApp Number
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function SingleConnectionCard({
+  integration,
+  index,
+  onStatusChange,
+}: {
+  integration: UserIntegration
+  index: number
+  onStatusChange: () => void
+}) {
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -39,15 +95,13 @@ export function ConnectionCard() {
       }
 
       if (data?.connected) {
-        setIntegration({ ...integration, status: 'CONNECTED' })
+        onStatusChange()
         setQrCode(null)
         return
       }
 
       if (data?.error === 'qr_not_ready_yet' || data?.creating) {
-        if (integration.status !== 'WAITING_QR') {
-          setIntegration({ ...integration, status: 'WAITING_QR' })
-        }
+        onStatusChange()
         return
       }
 
@@ -57,9 +111,7 @@ export function ConnectionCard() {
 
       if (data?.base64) {
         setQrCode(data.base64)
-        if (integration.status !== 'WAITING_QR') {
-          setIntegration({ ...integration, status: 'WAITING_QR' })
-        }
+        onStatusChange()
       }
     } catch (err: any) {
       console.error(err)
@@ -67,11 +119,9 @@ export function ConnectionCard() {
     } finally {
       setLoading(false)
     }
-  }, [integration, setIntegration])
+  }, [integration.id, onStatusChange])
 
   useEffect(() => {
-    if (!integration || integrationLoading || error) return
-
     if (integration.status === 'DISCONNECTED' || integration.status === 'WAITING_QR') {
       if (!qrAttempted.current && !qrCode) {
         qrAttempted.current = true
@@ -86,37 +136,35 @@ export function ConnectionCard() {
         if (timerRef.current) clearInterval(timerRef.current)
       }
     }
-  }, [integration, qrCode, fetchQR, integrationLoading, error])
+  }, [integration.status, qrCode, fetchQR, error])
 
   useEffect(() => {
-    if (integration?.status === 'CONNECTED') {
+    if (integration.status === 'CONNECTED') {
       setQrCode(null)
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [integration?.status])
+  }, [integration.status])
 
   const handleSimulateConnection = async () => {
-    if (!integration?.id) return
     setLoading(true)
     await supabase
       .from('user_integrations')
       .update({ status: 'CONNECTED' })
       .eq('id', integration.id)
-    setIntegration({ ...integration, status: 'CONNECTED' })
+    onStatusChange()
     setQrCode(null)
     setLoading(false)
     toast.success('Simulation: Connected to WhatsApp!')
   }
 
   const handleReset = async () => {
-    if (!integration?.id) return
     setLoading(true)
     setError(null)
     await supabase
       .from('user_integrations')
       .update({ status: 'DISCONNECTED' })
       .eq('id', integration.id)
-    setIntegration({ ...integration, status: 'DISCONNECTED' })
+    onStatusChange()
     qrAttempted.current = false
     setQrCode(null)
     setLoading(false)
@@ -128,23 +176,7 @@ export function ConnectionCard() {
     fetchQR()
   }
 
-  if (integrationLoading) {
-    return (
-      <Card className="shadow-subtle border-border/40 rounded-3xl">
-        <CardHeader className="pb-4">
-          <Skeleton className="h-6 w-48 mb-2 rounded-md" />
-          <Skeleton className="h-4 w-64 rounded-md" />
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center p-6 min-h-[250px]">
-            <Skeleton className="w-48 h-48 rounded-2xl" />
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const status = integration?.status || 'DISCONNECTED'
+  const status = integration.status || 'DISCONNECTED'
 
   return (
     <Card className="shadow-subtle border-border/40 rounded-3xl overflow-hidden relative bg-white">
@@ -153,7 +185,7 @@ export function ConnectionCard() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-              <Smartphone className="h-5 w-5 text-zinc-400" /> WhatsApp Connection
+              <Smartphone className="h-5 w-5 text-zinc-400" /> WhatsApp Number {index}
             </CardTitle>
             <CardDescription className="mt-1 font-medium">
               Link your account to sync data
@@ -197,9 +229,6 @@ export function ConnectionCard() {
               <div className="flex flex-col items-center justify-center p-6 border border-dashed border-zinc-300 rounded-2xl bg-zinc-50 min-h-[250px]">
                 <Loader2 className="h-8 w-8 animate-spin text-zinc-400 mb-4" />
                 <p className="text-sm font-medium text-zinc-700">Preparing connection...</p>
-                <p className="text-xs text-zinc-500 mt-1 text-center max-w-xs font-medium">
-                  Setting up your dedicated WhatsApp instance
-                </p>
                 <div className="flex gap-2 mt-5">
                   <Button
                     variant="outline"
@@ -259,19 +288,7 @@ export function ConnectionCard() {
                   >
                     <PowerOff className="mr-2 h-3 w-3" /> Restart
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSimulateConnection}
-                    className="text-zinc-400 hover:text-zinc-600 rounded-full"
-                  >
-                    Simulate Scan
-                  </Button>
                 </div>
-                <p className="text-xs text-zinc-500 mt-4 text-center max-w-xs font-medium">
-                  Open WhatsApp on your phone, go to Settings &gt; Linked Devices, and scan this
-                  code.
-                </p>
               </div>
             )}
 
@@ -294,12 +311,6 @@ export function ConnectionCard() {
                     <p className="text-sm text-zinc-500 font-medium mt-0.5">
                       Your WhatsApp is linked. Ready to sync.
                     </p>
-                    {!integration.is_webhook_enabled && (
-                      <p className="text-xs text-amber-600 font-medium mt-1 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Webhook not enabled. Messages may not sync automatically.
-                      </p>
-                    )}
                   </div>
                 </div>
                 <Button

@@ -187,16 +187,34 @@ export default function Contacts() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-[12px] font-semibold text-muted-foreground/80">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>
-                      {contact.last_message_at
-                        ? formatDistanceToNow(new Date(contact.last_message_at), {
-                            addSuffix: true,
-                            locale: dateLocale,
-                          })
-                        : t('no_activity')}
-                    </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[12px] font-semibold text-muted-foreground/80">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>
+                        {contact.last_message_at
+                          ? formatDistanceToNow(new Date(contact.last_message_at), {
+                              addSuffix: true,
+                              locale: dateLocale,
+                            })
+                          : t('no_activity')}
+                      </span>
+                    </div>
+                    {contact.last_message_from_me === false && (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-100/50 text-amber-600 border-amber-200 text-[10px] px-1.5 py-0"
+                      >
+                        Waiting
+                      </Badge>
+                    )}
+                    {contact.last_message_from_me === true && (
+                      <Badge
+                        variant="outline"
+                        className="bg-green-100/50 text-green-600 border-green-200 text-[10px] px-1.5 py-0"
+                      >
+                        Responded
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>

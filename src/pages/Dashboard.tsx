@@ -6,7 +6,17 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { RefreshCw, Loader2, Users, Flame, Activity, ArrowRight, MessageSquare } from 'lucide-react'
+import {
+  RefreshCw,
+  Loader2,
+  Users,
+  Flame,
+  Activity,
+  ArrowRight,
+  MessageSquare,
+  Clock,
+  CheckCircle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
@@ -122,11 +132,21 @@ export default function Dashboard() {
   }
 
   const totalContacts = contacts.length
-  const hotLeads = contacts.filter((c) => c.classification === 'Hot').length
-  const avgScore = contacts.length
-    ? Math.round(contacts.reduce((acc, c) => acc + (c.score || 0), 0) / contacts.length)
+  const pendingContacts = contacts.filter((c) => c.last_message_from_me === false)
+  const respondedContacts = contacts.filter((c) => c.last_message_from_me === true)
+
+  const pendingCount = pendingContacts.length
+  const respondedCount = respondedContacts.length
+
+  const avgWaitTimeMs = pendingContacts.length
+    ? pendingContacts.reduce(
+        (acc, c) => acc + (new Date().getTime() - new Date(c.last_message_at!).getTime()),
+        0,
+      ) / pendingContacts.length
     : 0
-  const activeRecently = contacts.filter((c) => c.last_message_at).length
+
+  const avgWaitTimeHours = Math.round(avgWaitTimeMs / (1000 * 60 * 60))
+  const avgWaitTimeText = pendingContacts.length === 0 ? '-' : `${avgWaitTimeHours}h`
 
   const chartData = useMemo(() => {
     const counts = { Hot: 0, Warm: 0, Lukewarm: 0, Cold: 0, 'Do Not Contact': 0 }
@@ -219,14 +239,14 @@ export default function Dashboard() {
           <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                {t('hot_leads')}
+                Pending
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <Flame className="h-5 w-5" />
+              <div className="bg-amber-100 p-3 rounded-full text-amber-600">
+                <Clock className="h-5 w-5" />
               </div>
             </div>
             <div className="text-5xl font-bold tracking-tighter text-foreground">
-              {loading ? '-' : hotLeads}
+              {loading ? '-' : pendingCount}
             </div>
           </CardContent>
         </Card>
@@ -234,29 +254,29 @@ export default function Dashboard() {
           <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                {t('avg_score')}
+                Responded
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
+              <div className="bg-green-100 p-3 rounded-full text-green-600">
+                <CheckCircle className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="text-5xl font-bold tracking-tighter text-foreground">
+              {loading ? '-' : respondedCount}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
+                Avg Wait Time
+              </span>
+              <div className="bg-blue-100 p-3 rounded-full text-blue-600">
                 <Activity className="h-5 w-5" />
               </div>
             </div>
             <div className="text-5xl font-bold tracking-tighter text-foreground">
-              {loading && contacts.length === 0 ? '-' : avgScore}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                {t('active_recently')}
-              </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <MessageSquare className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="text-5xl font-bold tracking-tighter text-foreground">
-              {loading ? '-' : activeRecently}
+              {loading && contacts.length === 0 ? '-' : avgWaitTimeText}
             </div>
           </CardContent>
         </Card>
@@ -375,6 +395,14 @@ export default function Dashboard() {
                           <span className="text-[11px] font-bold tabular-nums text-muted-foreground">
                             {contact.score} {t('pts')}
                           </span>
+                        )}
+                        {contact.last_message_from_me === false && (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-100/50 text-amber-600 border-amber-200 text-[10px] px-2 py-0.5"
+                          >
+                            Waiting
+                          </Badge>
                         )}
                         {contact.classification && (
                           <Badge
