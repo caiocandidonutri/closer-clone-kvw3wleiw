@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react'
 
 export default function DashboardLayout() {
   const { user, loading: authLoading } = useAuth()
-  const { integration, loading: integrationLoading } = useIntegration()
+  const { integrations, loading: integrationLoading } = useIntegration()
   const location = useLocation()
 
   if (authLoading || integrationLoading) {
@@ -21,7 +21,7 @@ export default function DashboardLayout() {
 
   if (!user) return <Navigate to="/auth" replace />
 
-  const isSetupComplete = integration?.is_setup_completed
+  const isSetupComplete = integrations.length > 0
   const isOnboardingRoute = location.pathname === '/app/onboarding'
 
   if (!isSetupComplete && !isOnboardingRoute) {

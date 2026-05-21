@@ -1,12 +1,28 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+  useCallback,
+} from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from './use-auth'
-import { UserIntegration } from '@/lib/types'
+
+export interface UserIntegration {
+  id: string
+  user_id: string
+  instance_name: string | null
+  status: string
+  is_setup_completed: boolean
+  is_webhook_enabled: boolean
+}
 
 interface IntegrationContextType {
-  integration: UserIntegration | null
+  integrations: UserIntegration[]
   loading: boolean
-  setIntegration: React.Dispatch<React.SetStateAction<UserIntegration | null>>
+  addIntegration: () => Promise<UserIntegration | null>
+  refreshIntegrations: () => Promise<void>
 }
 
 const IntegrationContext = createContext<IntegrationContextType | undefined>(undefined)
@@ -19,54 +35,29 @@ export const useIntegration = () => {
 
 export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth()
-  const [integration, setIntegration] = useState<UserIntegration | null>(null)
+  const [integrations, setIntegrations] = useState<UserIntegration[]>([])
   const [loading, setLoading] = useState(true)
+
+  const fetchIntegrations = useCallback(async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+
+    if (data) setIntegrations(data as UserIntegration[])
+    setLoading(false)
+  }, [user])
 
   useEffect(() => {
     if (!user) {
-      setIntegration(null)
+      setIntegrations([])
       setLoading(false)
       return
     }
 
-    const fetchIntegration = async () => {
-      const { data, error } = await supabase
-        .from('user_integrations')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!data) {
-        const newIntegration = {
-          user_id: user.id,
-          instance_name: user.id,
-          status: 'DISCONNECTED',
-          is_setup_completed: false,
-          is_webhook_enabled: false,
-        }
-        const { data: inserted } = await supabase
-          .from('user_integrations')
-          .insert(newIntegration as any)
-          .select()
-          .single()
-
-        if (inserted) setIntegration(inserted as UserIntegration)
-      } else if (data.instance_name !== user.id) {
-        const { data: updated } = await supabase
-          .from('user_integrations')
-          .update({ instance_name: user.id } as any)
-          .eq('id', data.id)
-          .select()
-          .single()
-
-        if (updated) setIntegration(updated as UserIntegration)
-      } else {
-        setIntegration(data as UserIntegration)
-      }
-      setLoading(false)
-    }
-
-    fetchIntegration()
+    fetchIntegrations()
 
     const channel = supabase
       .channel('integration_changes')
@@ -78,11 +69,8 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
           table: 'user_integrations',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
-          setIntegration((prev) => {
-            // Merge with previous to prevent wiping optimistic local UI updates (like base64 fetch)
-            return { ...(prev || {}), ...(payload.new as UserIntegration) }
-          })
+        () => {
+          fetchIntegrations()
         },
       )
       .subscribe()
@@ -90,11 +78,32 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [user, fetchIntegrations])
+
+  const addIntegration = async () => {
+    if (!user) return null
+    const newIntegration = {
+      user_id: user.id,
+      status: 'DISCONNECTED',
+      is_setup_completed: false,
+      is_webhook_enabled: false,
+    }
+    const { data: inserted } = await supabase
+      .from('user_integrations')
+      .insert(newIntegration as any)
+      .select()
+      .single()
+
+    if (inserted) {
+      setIntegrations((prev) => [...prev, inserted as UserIntegration])
+      return inserted as UserIntegration
+    }
+    return null
+  }
 
   return React.createElement(
     IntegrationContext.Provider,
-    { value: { integration, loading, setIntegration } },
+    { value: { integrations, loading, addIntegration, refreshIntegrations: fetchIntegrations } },
     children,
   )
 }

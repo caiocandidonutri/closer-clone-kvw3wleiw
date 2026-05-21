@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useAgents } from '@/hooks/use-agents'
+import { useIntegration } from '@/hooks/use-integration'
 import { useLanguage, TranslationKey } from '@/hooks/use-language'
 import { WhatsAppContact, WhatsAppMessage } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -26,6 +27,7 @@ export default function Chat() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { agents } = useAgents()
+  const { integrations } = useIntegration()
   const { t, language } = useLanguage()
   const dateLocale = language === 'pt' ? ptBR : enUS
 
@@ -197,9 +199,17 @@ export default function Chat() {
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col max-w-[140px] sm:max-w-[260px]">
-              <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
-                {contact.push_name || t('unknown')}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
+                  {contact.push_name || t('unknown')}
+                </span>
+                {(contact as any).instance_id && (
+                  <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-md whitespace-nowrap hidden sm:inline-block">
+                    {integrations.find((i) => i.id === (contact as any).instance_id)
+                      ?.instance_name || 'WhatsApp'}
+                  </span>
+                )}
+              </div>
               <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
                 {contact.phone_number
                   ? `+${contact.phone_number}`

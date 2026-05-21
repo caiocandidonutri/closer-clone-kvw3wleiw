@@ -9,14 +9,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, Stethoscope } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import closerLogo from '@/assets/closer_logo-fcd09.png'
 
 export function Header() {
   const { user, signOut } = useAuth()
-  const { integration } = useIntegration()
+  const { integrations } = useIntegration()
   const { t } = useLanguage()
   const navigate = useNavigate()
 
@@ -25,26 +24,28 @@ export function Header() {
     navigate('/')
   }
 
-  const getStatusColor = (status?: string) => {
-    if (status === 'CONNECTED') return 'bg-primary'
-    if (status === 'WAITING_QR') return 'bg-blue-500 animate-pulse'
-    return 'bg-muted-foreground'
-  }
+  const connectedCount = integrations.filter((i) => i.status === 'CONNECTED').length
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border bg-background/80 backdrop-blur-2xl px-6 md:px-10 transition-all">
       <div className="flex items-center gap-5">
-        <div className="flex items-center md:hidden -mt-[17px]">
-          <img src={closerLogo} alt="Closer" className="h-12 w-auto object-contain" />
+        <div className="flex items-center gap-3 md:hidden">
+          <div className="bg-primary text-primary-foreground p-1.5 rounded-lg shadow-sm">
+            <Stethoscope className="h-5 w-5" />
+          </div>
+          <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">
+            Dr. Caio Cândido
+          </span>
         </div>
         <div className="flex items-center gap-2.5 text-xs font-bold text-foreground bg-muted/50 px-4 py-2 rounded-full border border-border shadow-subtle">
-          <div className={cn('h-2.5 w-2.5 rounded-full', getStatusColor(integration?.status))} />
+          <div
+            className={cn(
+              'h-2.5 w-2.5 rounded-full',
+              connectedCount > 0 ? 'bg-primary' : 'bg-muted-foreground',
+            )}
+          />
           <span className="hidden sm:inline-block tracking-tight uppercase">
-            {integration?.status === 'CONNECTED'
-              ? t('connected')
-              : integration?.status === 'WAITING_QR'
-                ? t('waiting_qr')
-                : t('disconnected')}
+            {connectedCount} {t('connected')}
           </span>
         </div>
       </div>

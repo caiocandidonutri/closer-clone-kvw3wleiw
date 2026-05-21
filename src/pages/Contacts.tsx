@@ -24,6 +24,7 @@ import { ptBR, enUS } from 'date-fns/locale'
 import { Button } from '@/components/ui/button'
 import { getBadgeColor } from './Dashboard'
 import { cn } from '@/lib/utils'
+import { useIntegration } from '@/hooks/use-integration'
 
 const CATEGORIES = [
   { id: 'All', labelKey: 'all', icon: UserRound },
@@ -40,6 +41,7 @@ export default function Contacts() {
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState('All')
   const { contacts, loading } = useContacts(search)
+  const { integrations } = useIntegration()
   const navigate = useNavigate()
 
   const filteredContacts = useMemo(() => {
@@ -143,11 +145,22 @@ export default function Contacts() {
                   <h3 className="font-bold text-xl tracking-tight text-foreground line-clamp-1 mb-1 group-hover:text-primary transition-colors duration-300">
                     {contact.push_name || t('unknown')}
                   </h3>
-                  <p className="text-sm font-semibold text-muted-foreground truncate">
-                    {contact.phone_number
-                      ? `+${contact.phone_number}`
-                      : contact.remote_jid.split('@')[0]}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-muted-foreground truncate">
+                      {contact.phone_number
+                        ? `+${contact.phone_number}`
+                        : contact.remote_jid.split('@')[0]}
+                    </p>
+                    {(contact as any).instance_id && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-muted/50 text-muted-foreground font-bold px-1.5 py-0"
+                      >
+                        {integrations.find((i) => i.id === (contact as any).instance_id)
+                          ?.instance_name || 'WhatsApp'}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-4 mt-auto pt-5 border-t border-border/40">

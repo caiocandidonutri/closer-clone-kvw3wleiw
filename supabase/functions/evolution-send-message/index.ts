@@ -25,10 +25,19 @@ Deno.serve(async (req: Request) => {
     const { contactId, text } = await req.json()
     if (!contactId || !text) throw new Error('Missing contactId or text')
 
+    const { data: contact } = await supabaseClient
+      .from('whatsapp_contacts')
+      .select('remote_jid, instance_id')
+      .eq('id', contactId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!contact || !contact.remote_jid) throw new Error('Contact not found')
+
     const { data: integration } = await supabaseClient
       .from('user_integrations')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('id', contact.instance_id)
       .single()
 
     if (!integration || !integration.instance_name) {
@@ -38,15 +47,6 @@ Deno.serve(async (req: Request) => {
     const evoUrlRaw = integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL')
     const evoUrl = evoUrlRaw ? evoUrlRaw.replace(/\/$/, '') : ''
     const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
-
-    const { data: contact } = await supabaseClient
-      .from('whatsapp_contacts')
-      .select('remote_jid')
-      .eq('id', contactId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!contact || !contact.remote_jid) throw new Error('Contact not found')
 
     const response = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
       method: 'POST',

@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('Integration not found')
     }
 
-    const instanceName = integ.user_id
+    const instanceName = integ.instance_name || `${integ.user_id}_${integrationId.substring(0, 8)}`
 
     if (integ.instance_name !== instanceName) {
       await supabase

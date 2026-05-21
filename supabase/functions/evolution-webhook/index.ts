@@ -193,6 +193,7 @@ Deno.serve(async (req: Request) => {
         .from('whatsapp_contacts')
         .select('id, phone_number, push_name')
         .eq('user_id', userId)
+        .eq('instance_id', integ.id)
         .eq('remote_jid', effectiveJid)
         .maybeSingle()
 
@@ -201,6 +202,7 @@ Deno.serve(async (req: Request) => {
           .from('whatsapp_contacts')
           .select('id, phone_number, push_name')
           .eq('user_id', userId)
+          .eq('instance_id', integ.id)
           .eq('phone_number', effectivePhone)
           .limit(1)
           .maybeSingle()
@@ -212,6 +214,7 @@ Deno.serve(async (req: Request) => {
           .from('whatsapp_contacts')
           .select('id, phone_number, push_name')
           .eq('user_id', userId)
+          .eq('instance_id', integ.id)
           .eq('remote_jid', remoteJid)
           .limit(1)
           .maybeSingle()
@@ -223,6 +226,7 @@ Deno.serve(async (req: Request) => {
           .from('whatsapp_contacts')
           .insert({
             user_id: userId,
+            instance_id: integ.id,
             remote_jid: effectiveJid,
             phone_number: effectivePhone,
             push_name: pushName,
