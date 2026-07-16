@@ -9,12 +9,14 @@ import React, {
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from './use-auth'
 import { getIntegrations, Integration } from '@/services/integrations'
+
+export type { Integration }
 import { useRealtime } from '@/hooks/use-realtime'
 
 interface IntegrationContextType {
   integrations: Integration[]
   loading: boolean
-  addIntegration: () => Promise<Integration | null>
+  addIntegration: (name?: string) => Promise<Integration | null>
   refreshIntegrations: () => Promise<void>
 }
 
@@ -55,11 +57,13 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     fetchIntegrations()
   })
 
-  const addIntegration = async () => {
+  const addIntegration = async (name?: string) => {
     if (!user) return null
+    const instanceName = 'ins_' + Math.random().toString(36).substring(2, 10)
     const rec = await pb.collection('integrations').create({
-      name: 'WhatsApp',
+      name: name || 'WhatsApp',
       provider: 'evolution_api',
+      instance_name: instanceName,
       status: 'DISCONNECTED',
       owner: user.id,
     })

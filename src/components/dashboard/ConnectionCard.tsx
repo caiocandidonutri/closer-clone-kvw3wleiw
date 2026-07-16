@@ -10,12 +10,11 @@ import {
   RefreshCw,
   AlertCircle,
   PowerOff,
-  ShieldCheck,
   Plus,
 } from 'lucide-react'
-import { useIntegration, UserIntegration } from '@/hooks/use-integration'
+import { useIntegration } from '@/hooks/use-integration'
+import { Integration, connectWhatsapp } from '@/services/integrations'
 import pb from '@/lib/pocketbase/client'
-import { connectWhatsapp } from '@/services/integrations'
 import { toast } from 'sonner'
 
 export function ConnectionCard() {
@@ -71,7 +70,7 @@ function SingleConnectionCard({
   index,
   onStatusChange,
 }: {
-  integration: UserIntegration
+  integration: Integration
   index: number
   onStatusChange: () => void
 }) {
@@ -88,25 +87,21 @@ function SingleConnectionCard({
     setError(null)
     try {
       const data: any = await connectWhatsapp(integration.id)
-      const payload = data?.data ?? data
 
-      if (payload?.connected) {
+      if (data.status === 'CONNECTED') {
         onStatusChange()
         setQrCode(null)
         return
       }
 
-      if (payload?.error === 'qr_not_ready_yet' || payload?.creating) {
-        onStatusChange()
-        return
+      if (data.error) {
+        throw new Error(data.error)
       }
 
-      if (payload?.error) {
-        throw new Error(payload.error)
-      }
-
-      if (payload?.base64) {
-        setQrCode(payload.base64)
+      if (data.base64) {
+        setQrCode(
+          data.base64.startsWith('data:') ? data.base64 : `data:image/png;base64,${data.base64}`,
+        )
         onStatusChange()
       }
     } catch (err: any) {
@@ -287,14 +282,6 @@ function SingleConnectionCard({
                 <div className="flex items-center gap-4">
                   <div className="relative p-2 bg-white rounded-full shadow-sm">
                     <CheckCircle2 className="h-6 w-6 text-zinc-900 shrink-0" />
-                    {integration.is_webhook_enabled && (
-                      <div
-                        className="absolute -bottom-1 -right-1 bg-green-500 rounded-full border-2 border-white p-0.5"
-                        title="Webhook Enabled"
-                      >
-                        <ShieldCheck className="h-3 w-3 text-white" />
-                      </div>
-                    )}
                   </div>
                   <div>
                     <p className="font-semibold text-base">Successfully Connected</p>

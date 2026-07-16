@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T01:54:44.842Z",
+  "generatedAt": "2026-07-16T01:56:45.693Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -108,19 +103,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -156,10 +146,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "pending",
-            "responded"
-          ]
+          "selectValues": ["pending", "responded"]
         },
         {
           "name": "avatar_url",
@@ -205,19 +192,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -255,11 +237,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "user",
-            "assistant",
-            "system"
-          ]
+          "selectValues": ["user", "assistant", "system"]
         },
         {
           "name": "timestamp",
@@ -272,24 +250,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_messages_contact ON messages (contact)"
-      ]
+      "indexes": ["CREATE INDEX idx_messages_contact ON messages (contact)"]
     }
   ]
 }
