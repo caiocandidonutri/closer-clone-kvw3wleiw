@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ClientResponseError } from 'pocketbase'
 import { useAuth } from '@/hooks/use-auth'
 import { useLanguage } from '@/hooks/use-language'
 import { Button } from '@/components/ui/button'
@@ -40,7 +41,12 @@ export default function Auth() {
 
     setLoading(false)
     if (error) {
-      toast.error(error.message)
+      const err = error as ClientResponseError
+      const message =
+        err?.status === 400 || err?.status === 401
+          ? t('failed_to_authenticate') || 'Failed to authenticate'
+          : err?.message || 'Failed to authenticate'
+      toast.error(message)
     } else {
       toast.success(isSignUp ? t('account_created') : t('welcome_back'))
       navigate('/app')

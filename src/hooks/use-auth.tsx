@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import type { RecordModel } from 'pocketbase'
+import type { RecordModel, ClientResponseError } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 
 interface AuthContextType {
@@ -62,7 +62,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await pb.collection('users').authWithPassword(email, password)
       return { error: null }
     } catch (error) {
-      return { error }
+      const err = error as ClientResponseError
+      const message =
+        err?.status === 400 || err?.status === 401
+          ? 'Failed to authenticate'
+          : err?.message || 'Failed to authenticate'
+      return { error: { ...err, message } }
     }
   }
 
