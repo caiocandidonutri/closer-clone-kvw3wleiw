@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
 import Settings from './pages/Settings'
 import Chat from './pages/Chat'
+import Onboarding from './pages/Onboarding'
 import NotFound from './pages/NotFound'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,7 @@ const App = () => (
                 }
               >
                 <Route index element={<Dashboard />} />
+                <Route path="onboarding" element={<Onboarding />} />
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="chat/:id" element={<Chat />} />
                 <Route path="settings" element={<Settings />} />
