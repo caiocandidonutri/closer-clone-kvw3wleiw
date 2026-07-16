@@ -36,6 +36,7 @@ const App = () => (
                 <Route path="/auth" element={<Auth />} />
               </Route>
 
+              <Route path="/onboarding" element={<Navigate to="/app/onboarding" replace />} />
               <Route
                 path="/app"
                 element={
