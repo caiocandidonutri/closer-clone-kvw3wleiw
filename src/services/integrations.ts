@@ -39,9 +39,13 @@ export const disconnectWhatsapp = async (integrationId: string): Promise<{ succe
 export const deleteIntegration = async (id: string): Promise<void> =>
   await pb.collection('integrations').delete(id)
 
-export const sendMessage = async (contactId: string, text: string): Promise<{ success: boolean }> =>
+export const sendMessage = async (
+  contactId: string,
+  text: string,
+  integrationId?: string,
+): Promise<{ success: boolean }> =>
   await pb.send('/backend/v1/whatsapp/send', {
     method: 'POST',
-    body: JSON.stringify({ contactId, text }),
+    body: JSON.stringify({ contactId, text, integrationId }),
     headers: { 'Content-Type': 'application/json' },
   })

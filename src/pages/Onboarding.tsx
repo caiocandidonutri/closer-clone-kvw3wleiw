@@ -1,65 +1,113 @@
 import { useState, useEffect, useRef } from 'react'
 import { useIntegration } from '@/hooks/use-integration'
 import { useLanguage } from '@/hooks/use-language'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Smartphone, BrainCircuit, CheckCircle2 } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
-import { connectWhatsapp } from '@/services/integrations'
+import { Button } from '@/components/ui/button'
+import {
+  Loader2,
+  Smartphone,
+  BrainCircuit,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react'
+import { connectWhatsapp, type Integration } from '@/services/integrations'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 
+const QR_TIMEOUT_MS = 20000
+
 export default function Onboarding() {
-  const { integration, setIntegration } = useIntegration()
+  const { integrations, addIntegration, refreshIntegrations } = useIntegration()
   const { t } = useLanguage()
   const navigate = useNavigate()
 
   const [step, setStep] = useState(1)
   const [qrCode, setQrCode] = useState<string | null>(null)
-
-  const [syncStatus, setSyncStatus] = useState<string>('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
-
+  const [syncStatus, setSyncStatus] = useState('')
+  const [currentIntegration, setCurrentIntegration] = useState<Integration | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncStarted = useRef(false)
-
-  // Fast-fail redirect if setup is already completed to prevent loop
-  useEffect(() => {
-    if (integration?.is_setup_completed) {
-      navigate('/app', { replace: true })
-    }
-  }, [integration?.is_setup_completed, navigate])
+  const initialized = useRef(false)
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (step === 1 && integration?.status !== 'CONNECTED') {
-      const fetchQR = async () => {
-        if (!integration?.id) return
-        try {
-          const data: any = await connectWhatsapp(integration.id)
-          const payload = data?.data ?? data
-          if (payload?.base64) {
-            setQrCode(payload.base64)
-            if (integration.status !== 'WAITING_QR') {
-              setIntegration((prev: any) => (prev ? { ...prev, status: 'WAITING_QR' } : null))
-            }
-          }
-          if (payload?.connected) {
-            setIntegration((prev: any) => (prev ? { ...prev, status: 'CONNECTED' } : null))
-            setStep(2)
-          }
-        } catch (e) {
-          // Silent catch to prevent console spam
+    if (initialized.current) return
+    initialized.current = true
+
+    const init = async () => {
+      if (integrations.length > 0) {
+        const connected = integrations.find((i) => i.status === 'CONNECTED')
+        if (connected) {
+          navigate('/app', { replace: true })
+          return
         }
+        setCurrentIntegration(integrations[0])
+      } else {
+        const newInteg = await addIntegration('WhatsApp')
+        if (newInteg) setCurrentIntegration(newInteg)
       }
-      fetchQR()
-      interval = setInterval(fetchQR, 5000)
-    } else if (step === 1 && integration?.status === 'CONNECTED') {
+    }
+    init()
+  }, [integrations.length, addIntegration, navigate])
+
+  useEffect(() => {
+    if (!currentIntegration || step !== 1) return
+    if (currentIntegration.status === 'CONNECTED') {
+      setStep(2)
+      return
+    }
+    fetchQR()
+  }, [currentIntegration?.id, currentIntegration?.status, step])
+
+  useRealtime('integrations', (e) => {
+    if (!currentIntegration || e.record.id !== currentIntegration.id) return
+    const newStatus = (e.record as Record<string, unknown>).status as string
+    if (newStatus === 'CONNECTED' && step === 1) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       setStep(2)
     }
-    return () => {
-      if (interval) clearInterval(interval)
+  })
+
+  const fetchQR = async () => {
+    if (!currentIntegration?.id || loading) return
+    setLoading(true)
+    setError(null)
+    setQrCode(null)
+
+    timeoutRef.current = setTimeout(() => {
+      setLoading(false)
+      setError(t('connection_timeout') || 'Connection timeout. Please try again.')
+    }, QR_TIMEOUT_MS)
+
+    try {
+      const data = await connectWhatsapp(currentIntegration.id)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
+      if (data.status === 'CONNECTED') {
+        setStep(2)
+      } else if (data.base64) {
+        setQrCode(
+          data.base64.startsWith('data:') ? data.base64 : `data:image/png;base64,${data.base64}`,
+        )
+      } else if (data.error) {
+        setError(data.error)
+      } else {
+        setError(t('qr_not_ready') || 'QR code not ready. Please try again.')
+      }
+    } catch (err: any) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      setError(
+        err?.response?.message || err?.message || t('failed_connect') || 'Failed to connect.',
+      )
+    } finally {
+      setLoading(false)
     }
-  }, [step, integration?.id, integration?.status, setIntegration])
+  }
 
   useEffect(() => {
     if (step === 2 && !syncStarted.current) {
@@ -69,24 +117,6 @@ export default function Onboarding() {
   }, [step])
 
   const handleSync = async () => {
-    const currentIntegrationId = integration?.id
-
-    const completeSetup = async () => {
-      try {
-        if (currentIntegrationId) {
-          await pb.collection('integrations').update(currentIntegrationId, { status: 'CONNECTED' })
-          setIntegration((prev: any) =>
-            prev ? { ...prev, is_setup_completed: true, status: 'CONNECTED' } : null,
-          )
-        }
-      } catch (err) {
-        // Fallback optimistic update to ensure we don't trap the user
-        setIntegration((prev: any) => (prev ? { ...prev, is_setup_completed: true } : null))
-      } finally {
-        navigate('/app', { replace: true })
-      }
-    }
-
     try {
       setSyncStatus(t('downloading_contacts'))
       setProgress(20)
@@ -101,15 +131,13 @@ export default function Onboarding() {
       await new Promise((r) => setTimeout(r, 600))
 
       setProgress(100)
-      setSyncStatus(t('setup_complete') || 'Integração concluída! Redirecionando para o CRM...')
+      setSyncStatus(t('setup_complete') || 'Setup Complete!')
       toast.success(t('onboarding_complete'))
 
-      setTimeout(completeSetup, 1000)
+      setTimeout(() => navigate('/app', { replace: true }), 1000)
     } catch (err: any) {
-      toast.error(err.message || t('sync_failed_onboarding'))
-      setSyncStatus(t('error_setup'))
-
-      setTimeout(completeSetup, 1500)
+      toast.error(err?.message || t('sync_failed_onboarding'))
+      setTimeout(() => navigate('/app', { replace: true }), 1500)
     }
   }
 
@@ -149,22 +177,34 @@ export default function Onboarding() {
         <CardContent className="px-10 pb-12">
           {step === 1 && (
             <div className="flex flex-col items-center py-4 space-y-8">
-              {qrCode ? (
+              {error ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-start gap-3 p-4 bg-destructive/5 border border-destructive/20 rounded-2xl max-w-sm">
+                    <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm font-medium text-destructive">{error}</p>
+                  </div>
+                  <Button onClick={fetchQR} className="rounded-full px-6">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {t('try_again') || 'Try Again'}
+                  </Button>
+                </div>
+              ) : qrCode ? (
                 <div className="p-4 bg-white rounded-3xl shadow-elevation border border-border/40 animate-in fade-in zoom-in-95 duration-500">
-                  <img
-                    src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`}
-                    alt="WhatsApp QR"
-                    className="w-56 h-56 rounded-xl"
-                  />
+                  <img src={qrCode} alt="WhatsApp QR" className="w-56 h-56 rounded-xl" />
                 </div>
               ) : (
-                <div className="w-64 h-64 bg-muted/50 flex items-center justify-center rounded-3xl border border-dashed border-border">
+                <div className="w-64 h-64 bg-muted/50 flex flex-col items-center justify-center rounded-3xl border border-dashed border-border gap-3">
                   <Loader2 className="animate-spin h-10 w-10 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground font-medium">
+                    {t('generating_qr') || 'Generating QR Code...'}
+                  </p>
                 </div>
               )}
-              <p className="text-[13px] text-muted-foreground font-medium text-center max-w-xs leading-relaxed">
-                {t('open_whatsapp_scan')}
-              </p>
+              {!error && (
+                <p className="text-[13px] text-muted-foreground font-medium text-center max-w-xs leading-relaxed">
+                  {t('open_whatsapp_scan')}
+                </p>
+              )}
             </div>
           )}
 

@@ -16,86 +16,131 @@ import {
   deleteIntegration,
 } from '@/services/integrations'
 import { useLanguage } from '@/hooks/use-language'
+import { useRealtime } from '@/hooks/use-realtime'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+
+type ConnectionState =
+  | 'idle'
+  | 'generating'
+  | 'scanning'
+  | 'authenticating'
+  | 'connected'
+  | 'failed'
+  | 'timeout'
 
 interface IntegrationCardProps {
   integration: Integration
   onStatusChange: () => void
 }
 
+const QR_TIMEOUT_MS = 20000
+
 export function IntegrationCard({ integration, onStatusChange }: IntegrationCardProps) {
   const { t } = useLanguage()
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [connectionState, setConnectionState] = useState<ConnectionState>(
+    integration.status === 'CONNECTED' ? 'connected' : 'idle',
+  )
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isConnected = integration.status === 'CONNECTED'
-  const isWaiting = integration.status === 'WAITING_QR'
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isConnected && connectionState !== 'connected') {
+      setConnectionState('connected')
+      setQrCode(null)
+      setError(null)
+      setLoading(false)
+    }
+  }, [isConnected, connectionState])
+
+  useRealtime('integrations', (e) => {
+    if (e.record.id !== integration.id) return
+    const newStatus = (e.record as Record<string, unknown>).status as string
+    if (newStatus === 'CONNECTED') {
+      setConnectionState('connected')
+      setQrCode(null)
+      setError(null)
+      setLoading(false)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      onStatusChange()
+    } else if (newStatus === 'DISCONNECTED') {
+      if (connectionState === 'connected') {
+        setConnectionState('idle')
+        onStatusChange()
+      } else if (connectionState === 'scanning') {
+        setConnectionState('authenticating')
+      }
+    }
+  })
 
   const handleConnect = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setQrCode(null)
+    setConnectionState('generating')
+
+    timeoutRef.current = setTimeout(() => {
+      setLoading(false)
+      setConnectionState('timeout')
+      setError(t('connection_timeout') || 'Connection timeout. Please try again.')
+    }, QR_TIMEOUT_MS)
+
     try {
       const data = await connectWhatsapp(integration.id)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
       if (data.status === 'CONNECTED') {
         setQrCode(null)
+        setConnectionState('connected')
         toast.success(t('connected') || 'WhatsApp connected!')
         onStatusChange()
       } else if (data.base64) {
         setQrCode(
           data.base64.startsWith('data:') ? data.base64 : `data:image/png;base64,${data.base64}`,
         )
+        setConnectionState('scanning')
         onStatusChange()
       } else if (data.error) {
         setError(data.error)
+        setConnectionState('failed')
       } else {
-        setError('QR code not ready. Please try again.')
+        setError(t('qr_not_ready') || 'QR code not ready. Please try again.')
+        setConnectionState('failed')
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to connect. Please try again.')
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      const errMsg =
+        err?.response?.message ||
+        err?.message ||
+        t('failed_connect') ||
+        'Failed to connect. Please try again.'
+      setError(errMsg)
+      setConnectionState('failed')
     } finally {
       setLoading(false)
     }
   }, [integration.id, onStatusChange, t])
-
-  const connectRef = useRef(handleConnect)
-  connectRef.current = handleConnect
-
-  const shouldAutoConnect =
-    (integration.status === 'DISCONNECTED' || isWaiting) && !qrCode && !error && !loading
-
-  useEffect(() => {
-    if (shouldAutoConnect) connectRef.current()
-  }, [shouldAutoConnect])
-
-  useEffect(() => {
-    if (isWaiting && qrCode) {
-      pollRef.current = setInterval(() => onStatusChange(), 10000)
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current)
-      }
-    }
-  }, [isWaiting, qrCode, onStatusChange])
-
-  useEffect(() => {
-    if (isConnected) {
-      setQrCode(null)
-      setError(null)
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [isConnected])
 
   const handleDisconnect = async () => {
     setLoading(true)
     try {
       await disconnectWhatsapp(integration.id)
       setQrCode(null)
-      toast.success('WhatsApp disconnected')
+      setConnectionState('idle')
+      toast.success(t('disconnected_success') || 'WhatsApp disconnected')
       onStatusChange()
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to disconnect')
+      toast.error(err?.message || t('error_disconnect') || 'Failed to disconnect')
     } finally {
       setLoading(false)
     }
@@ -104,18 +149,62 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
   const handleDelete = async () => {
     try {
       await deleteIntegration(integration.id)
-      toast.success('Integration removed')
+      toast.success(t('integration_removed') || 'Integration removed')
       onStatusChange()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to remove')
     }
   }
 
-  const handleRefreshQr = () => {
+  const handleRetry = () => {
     setQrCode(null)
     setError(null)
     handleConnect()
   }
+
+  const getStatusBadge = () => {
+    switch (connectionState) {
+      case 'connected':
+        return {
+          label: t('connected') || 'Connected',
+          cls: 'bg-green-500/10 text-green-600 border-green-500/20',
+        }
+      case 'generating':
+        return {
+          label: t('generating_qr') || 'Generating QR...',
+          cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+        }
+      case 'scanning':
+        return {
+          label: t('scan_qr') || 'Scan QR Code',
+          cls: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+        }
+      case 'authenticating':
+        return {
+          label: t('connecting') || 'Connecting...',
+          cls: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+        }
+      case 'failed':
+        return {
+          label: t('connection_failed') || 'Connection Failed',
+          cls: 'bg-red-500/10 text-red-600 border-red-500/20',
+        }
+      case 'timeout':
+        return {
+          label: t('connection_timeout_short') || 'Timeout',
+          cls: 'bg-red-500/10 text-red-600 border-red-500/20',
+        }
+      default:
+        return {
+          label: t('disconnected') || 'Disconnected',
+          cls: 'bg-muted text-muted-foreground border-border',
+        }
+    }
+  }
+
+  const badge = getStatusBadge()
+  const showQr = (connectionState === 'scanning' || connectionState === 'authenticating') && qrCode
+  const showError = connectionState === 'failed' || connectionState === 'timeout'
 
   return (
     <Card className="shadow-subtle border border-border/40 rounded-[2rem] bg-card overflow-hidden">
@@ -139,52 +228,60 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
         <div
           className={cn(
             'self-start px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide border whitespace-nowrap',
-            isConnected
-              ? 'bg-green-500/10 text-green-600 border-green-500/20'
-              : isWaiting
-                ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
-                : 'bg-muted text-muted-foreground border-border',
+            badge.cls,
           )}
         >
-          {isConnected
-            ? t('connected') || 'Connected'
-            : isWaiting
-              ? t('waiting_qr') || 'Waiting QR'
-              : t('disconnected') || 'Disconnected'}
+          {badge.label}
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4 px-8">
-        {error && (
+        {showError && error && (
           <div className="flex items-start gap-3 p-4 bg-destructive/5 border border-destructive/20 rounded-2xl">
             <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-            <p className="text-sm font-medium text-destructive">{error}</p>
+            <p className="text-sm font-medium text-destructive flex-1">{error}</p>
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleRefreshQr}
+              onClick={handleRetry}
               className="ml-auto shrink-0 text-destructive"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {t('try_again') || 'Try Again'}
             </Button>
           </div>
         )}
-        {qrCode && isWaiting && (
+        {showQr && (
           <div className="flex flex-col items-center justify-center p-8 border border-border/60 rounded-3xl bg-muted/20 animate-in fade-in zoom-in-95 duration-300">
             <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
               <img src={qrCode} alt="WhatsApp QR Code" className="w-56 h-56" />
             </div>
             <h4 className="font-semibold text-foreground mb-1">
-              {t('scan_to_connect') || 'Scan to connect'}
+              {connectionState === 'authenticating'
+                ? t('authenticating') || 'Authenticating...'
+                : t('scan_to_connect') || 'Scan to connect'}
             </h4>
             <p className="text-sm font-medium text-muted-foreground text-center max-w-[250px]">
-              {t('scan_desc') || 'Open WhatsApp → Settings → Linked Devices'}
+              {connectionState === 'authenticating'
+                ? t('authenticating_desc') || 'Waiting for WhatsApp to confirm connection...'
+                : t('scan_desc') || 'Open WhatsApp → Settings → Linked Devices'}
             </p>
+            {connectionState === 'authenticating' && (
+              <div className="flex items-center gap-2 mt-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {t('connecting') || 'Connecting...'}
+                </span>
+              </div>
+            )}
           </div>
         )}
-        {loading && !qrCode && !error && (
-          <div className="flex items-center justify-center p-8 min-h-[120px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        {connectionState === 'generating' && (
+          <div className="flex flex-col items-center justify-center p-8 min-h-[200px] gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm font-medium text-muted-foreground">
+              {t('generating_qr') || 'Generating QR Code...'}
+            </p>
           </div>
         )}
       </CardContent>
@@ -193,13 +290,15 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
         <div className="text-sm font-medium text-muted-foreground text-center sm:text-left">
           {isConnected
             ? t('actively_connected') || 'Actively connected'
-            : 'Configure this instance'}
+            : connectionState === 'idle'
+              ? 'Configure this instance'
+              : badge.label}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          {isWaiting && qrCode && (
+          {showError && (
             <Button
               variant="outline"
-              onClick={handleRefreshQr}
+              onClick={handleRetry}
               disabled={loading}
               className="rounded-full px-6 h-11 font-semibold"
             >
@@ -208,7 +307,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
               ) : (
                 <RefreshCw className="mr-2 h-4 w-4" />
               )}
-              {t('refresh_qr') || 'Refresh QR'}
+              {t('try_again') || 'Try Again'}
             </Button>
           )}
           {isConnected ? (
@@ -226,18 +325,20 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
               {t('disconnect') || 'Disconnect'}
             </Button>
           ) : (
-            <Button
-              onClick={handleConnect}
-              disabled={loading}
-              className="rounded-full px-6 h-11 font-semibold"
-            >
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Plug className="mr-2 h-4 w-4" />
-              )}
-              {t('connect_whatsapp') || 'Connect'}
-            </Button>
+            !showError && (
+              <Button
+                onClick={handleConnect}
+                disabled={loading}
+                className="rounded-full px-6 h-11 font-semibold"
+              >
+                {loading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plug className="mr-2 h-4 w-4" />
+                )}
+                {t('connect_whatsapp') || 'Connect'}
+              </Button>
+            )
           )}
           <Button
             variant="ghost"

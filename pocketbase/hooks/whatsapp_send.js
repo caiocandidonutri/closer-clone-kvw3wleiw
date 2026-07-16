@@ -7,6 +7,7 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const contactId = body.contactId
     const text = body.text
+    const integrationId = body.integrationId
     if (!contactId || !text) return e.badRequestError('contactId and text required')
 
     let contact
@@ -18,14 +19,26 @@ routerAdd(
     if (contact.getString('owner') !== userId) return e.forbiddenError('not allowed')
 
     let integ
-    try {
-      integ = $app.findFirstRecordByFilter(
-        'integrations',
-        "owner = {:uid} && status = 'CONNECTED'",
-        { uid: userId },
-      )
-    } catch (_) {
-      return e.badRequestError('no connected WhatsApp integration')
+    if (integrationId) {
+      try {
+        integ = $app.findFirstRecordByFilter(
+          'integrations',
+          "id = {:id} && owner = {:uid} && status = 'CONNECTED'",
+          { id: integrationId, uid: userId },
+        )
+      } catch (_) {
+        return e.badRequestError('specified integration not found or not connected')
+      }
+    } else {
+      try {
+        integ = $app.findFirstRecordByFilter(
+          'integrations',
+          "owner = {:uid} && status = 'CONNECTED'",
+          { uid: userId },
+        )
+      } catch (_) {
+        return e.badRequestError('no connected WhatsApp integration')
+      }
     }
 
     let evoUrl = $secrets.get('EVOLUTION_API_URL') || ''
@@ -41,7 +54,14 @@ routerAdd(
       timeout: 30,
     })
     if (!sendRes.statusCode || sendRes.statusCode >= 400) {
-      return e.json(502, { error: 'Evolution send failed' })
+      let sendErr = 'Evolution send failed'
+      try {
+        var errJson = sendRes.json
+        if (errJson && (errJson.message || errJson.error)) {
+          sendErr = errJson.message || errJson.error
+        }
+      } catch (_) {}
+      return e.json(502, { error: sendErr })
     }
 
     const msgCol = $app.findCollectionByNameOrId('messages')
