@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   CardContent,
@@ -17,6 +17,7 @@ import {
 } from '@/services/integrations'
 import { useLanguage } from '@/hooks/use-language'
 import { useRealtime } from '@/hooks/use-realtime'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -34,7 +35,15 @@ interface IntegrationCardProps {
   onStatusChange: () => void
 }
 
-const QR_TIMEOUT_MS = 20000
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as { response?: { error?: string; message?: string }; message?: string }
+    if (e.response?.error) return e.response.error
+    if (e.response?.message) return e.response.message
+    if (e.message) return e.message
+  }
+  return getErrorMessage(err)
+}
 
 export function IntegrationCard({ integration, onStatusChange }: IntegrationCardProps) {
   const { t } = useLanguage()
@@ -44,15 +53,8 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
   const [connectionState, setConnectionState] = useState<ConnectionState>(
     integration.status === 'CONNECTED' ? 'connected' : 'idle',
   )
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isConnected = integration.status === 'CONNECTED'
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    }
-  }, [])
 
   useEffect(() => {
     if (isConnected && connectionState !== 'connected') {
@@ -71,7 +73,6 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       setQrCode(null)
       setError(null)
       setLoading(false)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       onStatusChange()
     } else if (newStatus === 'DISCONNECTED') {
       if (connectionState === 'connected') {
@@ -89,15 +90,8 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
     setQrCode(null)
     setConnectionState('generating')
 
-    timeoutRef.current = setTimeout(() => {
-      setLoading(false)
-      setConnectionState('timeout')
-      setError(t('connection_timeout') || 'Connection timeout. Please try again.')
-    }, QR_TIMEOUT_MS)
-
     try {
       const data = await connectWhatsapp(integration.id)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
 
       if (data.status === 'CONNECTED') {
         setQrCode(null)
@@ -117,15 +111,11 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
         setError(t('qr_not_ready') || 'QR code not ready. Please try again.')
         setConnectionState('failed')
       }
-    } catch (err: any) {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      const errMsg =
-        err?.response?.message ||
-        err?.message ||
-        t('failed_connect') ||
-        'Failed to connect. Please try again.'
+    } catch (err: unknown) {
+      const errMsg = extractErrorMessage(err)
+      const isTimeout = errMsg.toLowerCase().includes('timeout')
       setError(errMsg)
-      setConnectionState('failed')
+      setConnectionState(isTimeout ? 'timeout' : 'failed')
     } finally {
       setLoading(false)
     }
@@ -139,8 +129,8 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       setConnectionState('idle')
       toast.success(t('disconnected_success') || 'WhatsApp disconnected')
       onStatusChange()
-    } catch (err: any) {
-      toast.error(err?.message || t('error_disconnect') || 'Failed to disconnect')
+    } catch (err: unknown) {
+      toast.error(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -151,8 +141,8 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       await deleteIntegration(integration.id)
       toast.success(t('integration_removed') || 'Integration removed')
       onStatusChange()
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to remove')
+    } catch (err: unknown) {
+      toast.error(extractErrorMessage(err))
     }
   }
 
@@ -162,47 +152,38 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
     handleConnect()
   }
 
-  const getStatusBadge = () => {
-    switch (connectionState) {
-      case 'connected':
-        return {
-          label: t('connected') || 'Connected',
-          cls: 'bg-green-500/10 text-green-600 border-green-500/20',
-        }
-      case 'generating':
-        return {
-          label: t('generating_qr') || 'Generating QR...',
-          cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-        }
-      case 'scanning':
-        return {
-          label: t('scan_qr') || 'Scan QR Code',
-          cls: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
-        }
-      case 'authenticating':
-        return {
-          label: t('connecting') || 'Connecting...',
-          cls: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-        }
-      case 'failed':
-        return {
-          label: t('connection_failed') || 'Connection Failed',
-          cls: 'bg-red-500/10 text-red-600 border-red-500/20',
-        }
-      case 'timeout':
-        return {
-          label: t('connection_timeout_short') || 'Timeout',
-          cls: 'bg-red-500/10 text-red-600 border-red-500/20',
-        }
-      default:
-        return {
-          label: t('disconnected') || 'Disconnected',
-          cls: 'bg-muted text-muted-foreground border-border',
-        }
-    }
+  const badgeMap: Record<ConnectionState, { label: string; cls: string }> = {
+    connected: {
+      label: t('connected') || 'Connected',
+      cls: 'bg-green-500/10 text-green-600 border-green-500/20',
+    },
+    generating: {
+      label: t('generating_qr') || 'Generating QR...',
+      cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    },
+    scanning: {
+      label: t('scan_qr') || 'Scan QR Code',
+      cls: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+    },
+    authenticating: {
+      label: t('connecting') || 'Connecting...',
+      cls: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+    },
+    failed: {
+      label: t('connection_failed') || 'Connection Failed',
+      cls: 'bg-red-500/10 text-red-600 border-red-500/20',
+    },
+    timeout: {
+      label: t('connection_timeout_short') || 'Timeout',
+      cls: 'bg-red-500/10 text-red-600 border-red-500/20',
+    },
+    idle: {
+      label: t('disconnected') || 'Disconnected',
+      cls: 'bg-muted text-muted-foreground border-border',
+    },
   }
 
-  const badge = getStatusBadge()
+  const badge = badgeMap[connectionState]
   const showQr = (connectionState === 'scanning' || connectionState === 'authenticating') && qrCode
   const showError = connectionState === 'failed' || connectionState === 'timeout'
 

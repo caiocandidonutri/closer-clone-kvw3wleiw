@@ -19,21 +19,37 @@ export interface ConnectResult {
   error?: string
 }
 
+const CONNECT_TIMEOUT_MS = 20000
+
 export const getIntegrations = async (): Promise<Integration[]> =>
   await pb.collection('integrations').getFullList({ sort: '-created' })
 
-export const connectWhatsapp = async (integrationId: string): Promise<ConnectResult> =>
-  await pb.send('/backend/v1/whatsapp/connect', {
-    method: 'POST',
-    body: JSON.stringify({ integrationId }),
-    headers: { 'Content-Type': 'application/json' },
-  })
+export const connectWhatsapp = async (integrationId: string): Promise<ConnectResult> => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
+
+  try {
+    return await pb.send<ConnectResult>('/backend/v1/whatsapp/connect', {
+      method: 'POST',
+      body: { integrationId },
+      signal: controller.signal,
+    } as Parameters<typeof pb.send>[1])
+  } catch (err: unknown) {
+    if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      throw new Error(
+        'Connection timeout. The server did not respond within 20 seconds. Please try again.',
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 export const disconnectWhatsapp = async (integrationId: string): Promise<{ success: boolean }> =>
   await pb.send('/backend/v1/whatsapp/disconnect', {
     method: 'POST',
-    body: JSON.stringify({ integrationId }),
-    headers: { 'Content-Type': 'application/json' },
+    body: { integrationId },
   })
 
 export const deleteIntegration = async (id: string): Promise<void> =>
@@ -46,6 +62,5 @@ export const sendMessage = async (
 ): Promise<{ success: boolean }> =>
   await pb.send('/backend/v1/whatsapp/send', {
     method: 'POST',
-    body: JSON.stringify({ contactId, text, integrationId }),
-    headers: { 'Content-Type': 'application/json' },
+    body: { contactId, text, integrationId },
   })
