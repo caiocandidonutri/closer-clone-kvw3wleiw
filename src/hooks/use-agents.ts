@@ -1,120 +1,84 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase/client'
-import { useAuth } from './use-auth'
 import { AIAgent } from '@/lib/types'
 import { toast } from 'sonner'
 
+const STORAGE_KEY = 'closer_ai_agents'
+
+const loadAgents = (): AIAgent[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as AIAgent[]) : []
+  } catch {
+    return []
+  }
+}
+
+const persist = (agents: AIAgent[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(agents))
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 export const useAgents = () => {
-  const { user } = useAuth()
   const [agents, setAgents] = useState<AIAgent[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchAgents = useCallback(async () => {
-    if (!user) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching agents:', error)
-      toast.error('Failed to load AI agents')
-    } else if (data) {
-      setAgents(data as AIAgent[])
-    }
+    setAgents(loadAgents())
     setLoading(false)
-  }, [user])
+  }, [])
 
   useEffect(() => {
     fetchAgents()
   }, [fetchAgents])
 
   const createAgent = async (agent: Partial<AIAgent>) => {
-    if (!user) return
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .insert({
-        user_id: user.id,
-        name: agent.name!,
-        description: agent.description,
-        system_prompt: agent.system_prompt!,
-        gemini_api_key: agent.gemini_api_key!,
-        is_active: agent.is_active,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error creating agent:', error)
-      toast.error('Failed to create agent')
-      throw error
+    const newAgent: AIAgent = {
+      id:
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2),
+      user_id: '',
+      name: agent.name!,
+      description: agent.description ?? null,
+      system_prompt: agent.system_prompt!,
+      gemini_api_key: agent.gemini_api_key!,
+      is_active: agent.is_active ?? false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }
-
+    const next = [newAgent, ...agents]
+    setAgents(next)
+    persist(next)
     toast.success('Agent created successfully')
-    setAgents((prev) => [data as AIAgent, ...prev])
-    return data
+    return newAgent
   }
 
   const updateAgent = async (id: string, agent: Partial<AIAgent>) => {
-    if (!user) return
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .update({
-        name: agent.name,
-        description: agent.description,
-        system_prompt: agent.system_prompt,
-        gemini_api_key: agent.gemini_api_key,
-        is_active: agent.is_active,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('user_id', user.id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error updating agent:', error)
-      toast.error('Failed to update agent')
-      throw error
-    }
-
+    const next = agents.map((a) =>
+      a.id === id ? { ...a, ...agent, updated_at: new Date().toISOString() } : a,
+    )
+    setAgents(next)
+    persist(next)
     toast.success('Agent updated successfully')
-    setAgents((prev) => prev.map((a) => (a.id === id ? (data as AIAgent) : a)))
-    return data
+    return next.find((a) => a.id === id)
   }
 
   const deleteAgent = async (id: string) => {
-    if (!user) return
-    const { error } = await supabase.from('ai_agents').delete().eq('id', id).eq('user_id', user.id)
-
-    if (error) {
-      console.error('Error deleting agent:', error)
-      toast.error('Failed to delete agent')
-      throw error
-    }
-
+    const next = agents.filter((a) => a.id !== id)
+    setAgents(next)
+    persist(next)
     toast.success('Agent deleted successfully')
-    setAgents((prev) => prev.filter((a) => a.id !== id))
   }
 
   const toggleAgentStatus = async (id: string, currentStatus: boolean) => {
-    if (!user) return
     const newStatus = !currentStatus
-    const { error } = await supabase
-      .from('ai_agents')
-      .update({ is_active: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .eq('user_id', user.id)
-
-    if (error) {
-      console.error('Error toggling agent status:', error)
-      toast.error('Failed to update status')
-      throw error
-    }
-
-    setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, is_active: newStatus } : a)))
+    const next = agents.map((a) => (a.id === id ? { ...a, is_active: newStatus } : a))
+    setAgents(next)
+    persist(next)
   }
 
   return {

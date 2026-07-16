@@ -14,7 +14,8 @@ import {
   Plus,
 } from 'lucide-react'
 import { useIntegration, UserIntegration } from '@/hooks/use-integration'
-import { supabase } from '@/lib/supabase/client'
+import pb from '@/lib/pocketbase/client'
+import { connectWhatsapp } from '@/services/integrations'
 import { toast } from 'sonner'
 
 export function ConnectionCard() {
@@ -86,31 +87,26 @@ function SingleConnectionCard({
     setLoading(true)
     setError(null)
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('evolution-get-qr', {
-        body: { integrationId: integration.id },
-      })
+      const data: any = await connectWhatsapp(integration.id)
+      const payload = data?.data ?? data
 
-      if (invokeError) {
-        throw new Error(invokeError.message || 'Unknown error calling Edge Function')
-      }
-
-      if (data?.connected) {
+      if (payload?.connected) {
         onStatusChange()
         setQrCode(null)
         return
       }
 
-      if (data?.error === 'qr_not_ready_yet' || data?.creating) {
+      if (payload?.error === 'qr_not_ready_yet' || payload?.creating) {
         onStatusChange()
         return
       }
 
-      if (data?.error) {
-        throw new Error(data.error)
+      if (payload?.error) {
+        throw new Error(payload.error)
       }
 
-      if (data?.base64) {
-        setQrCode(data.base64)
+      if (payload?.base64) {
+        setQrCode(payload.base64)
         onStatusChange()
       }
     } catch (err: any) {
@@ -147,10 +143,7 @@ function SingleConnectionCard({
 
   const handleSimulateConnection = async () => {
     setLoading(true)
-    await supabase
-      .from('user_integrations')
-      .update({ status: 'CONNECTED' })
-      .eq('id', integration.id)
+    await pb.collection('integrations').update(integration.id, { status: 'CONNECTED' })
     onStatusChange()
     setQrCode(null)
     setLoading(false)
@@ -160,10 +153,7 @@ function SingleConnectionCard({
   const handleReset = async () => {
     setLoading(true)
     setError(null)
-    await supabase
-      .from('user_integrations')
-      .update({ status: 'DISCONNECTED' })
-      .eq('id', integration.id)
+    await pb.collection('integrations').update(integration.id, { status: 'DISCONNECTED' })
     onStatusChange()
     qrAttempted.current = false
     setQrCode(null)

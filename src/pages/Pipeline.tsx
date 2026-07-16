@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useContacts } from '@/hooks/use-contacts'
-import { supabase } from '@/lib/supabase/client'
+import pb from '@/lib/pocketbase/client'
 import { Card } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -34,38 +34,14 @@ export default function Pipeline() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const int = setInterval(() => {
-      const now = Date.now()
-      contacts.forEach((c) => {
-        if (c.pipeline_stage === 'Em Conversa' && c.last_message_at) {
-          if (now - new Date(c.last_message_at).getTime() > 5 * 60 * 1000) {
-            supabase
-              .from('whatsapp_contacts')
-              .update({ pipeline_stage: 'Em Espera' })
-              .eq('id', c.id)
-              .then()
-          }
-        }
-      })
-    }, 15000)
-    return () => clearInterval(int)
-  }, [contacts])
-
-  useEffect(() => {
-    const int = setInterval(() => supabase.functions.invoke('ai-pipeline-monitor'), 60000)
-    return () => clearInterval(int)
-  }, [])
-
   const handleMoveContact = async (contactId: string, newStage: string) => {
     if (contacts.find((c) => c.id === contactId)?.pipeline_stage === newStage) return
-    const prom = supabase
-      .from('whatsapp_contacts')
-      .update({ pipeline_stage: newStage })
-      .eq('id', contactId)
-      .then(({ error }) => {
-        if (error) throw error
-      })
+    const contact = contacts.find((c) => c.id === contactId)
+    const prevMeta = ((contact as any)?.metadata as Record<string, any>) || {}
+    const prom = pb
+      .collection('contacts')
+      .update(contactId, { metadata: { ...prevMeta, pipeline_stage: newStage } })
+      .then(() => {})
     toast.promise(prom, { loading: 'Atualizando...', success: 'Sucesso!', error: 'Erro ao mover.' })
   }
 
