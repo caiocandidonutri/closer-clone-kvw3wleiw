@@ -1,23 +1,13 @@
-import { useEffect, useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
-import { useAgents } from '@/hooks/use-agents'
-import { useIntegration } from '@/hooks/use-integration'
-import { useLanguage, TranslationKey } from '@/hooks/use-language'
-import { useContacts } from '@/hooks/use-contacts'
-import { WhatsAppContact, WhatsAppMessage } from '@/lib/types'
+import { getContact, Contact } from '@/services/contacts'
+import { useMessages } from '@/hooks/use-messages'
+import { sendMessage } from '@/services/integrations'
+import { useLanguage } from '@/hooks/use-language'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { ArrowLeft, Send, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
@@ -26,130 +16,55 @@ import { cn } from '@/lib/utils'
 export default function Chat() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const { agents } = useAgents()
-  const { integrations } = useIntegration()
   const { t, language } = useLanguage()
   const dateLocale = language === 'pt' ? ptBR : enUS
 
-  const [contact, setContact] = useState<WhatsAppContact | null>(null)
-  const [messages, setMessages] = useState<WhatsAppMessage[]>([])
-  const [loading, setLoading] = useState(true)
+  const [contact, setContact] = useState<Contact | null>(null)
+  const [loadingContact, setLoadingContact] = useState(true)
   const [newMessage, setNewMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { contacts } = useContacts('')
+
+  const { messages, loading } = useMessages(id)
 
   useEffect(() => {
-    if (!user || !id) return
+    if (!id) return
+    getContact(id)
+      .then((data) => setContact(data))
+      .catch((err) => {
+        console.error('[Chat] contact fetch error:', err)
+      })
+      .finally(() => setLoadingContact(false))
+  }, [id])
 
-    const fetchChat = async () => {
-      const { data: contactData } = await supabase
-        .from('whatsapp_contacts')
-        .select('*')
-        .eq('id', id)
-        .single()
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-      if (contactData) setContact(contactData)
-
-      const { data: messagesData } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('contact_id', id)
-        .order('timestamp', { ascending: true })
-
-      if (messagesData) setMessages(messagesData)
-      setLoading(false)
-      scrollToBottom()
-    }
-
-    fetchChat()
-
-    const channel = supabase
-      .channel(`chat_${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'whatsapp_messages',
-          filter: `contact_id=eq.${id}`,
-        },
-        (payload) => {
-          setMessages((prev) => {
-            if (prev.find((m) => m.id === payload.new.id)) return prev
-            return [...prev, payload.new as WhatsAppMessage]
-          })
-          scrollToBottom()
-        },
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user, id])
-
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
-  }
-
-  const handleAgentChange = async (value: string) => {
-    // Treat 'none_disable' as a proxy for no agent assigned (null in database)
-    const newAgentId = value === 'none_disable' ? null : value
-    const { error } = await supabase
-      .from('whatsapp_contacts')
-      .update({ ai_agent_id: newAgentId })
-      .eq('id', id)
-
-    if (error) {
-      toast.error(t('error_save' as TranslationKey) || 'Failed to save changes')
-    } else {
-      setContact((prev) => (prev ? { ...prev, ai_agent_id: newAgentId } : null))
-      toast.success(
-        newAgentId
-          ? t('agent_assigned' as TranslationKey) || 'Agent assigned'
-          : t('agent_removed' as TranslationKey) || 'Agent removed',
-      )
-    }
-  }
-
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim() || !contact) return
-
+    if (!newMessage.trim() || !id) return
     const text = newMessage.trim()
     setNewMessage('')
     setIsSending(true)
-
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-send-message', {
-        body: { contactId: contact.id, text },
-      })
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
+      await sendMessage(id, text)
     } catch (err: any) {
-      toast.error(err.message || 'Failed to send message')
+      toast.error(err?.message || 'Failed to send message')
     } finally {
       setIsSending(false)
     }
   }
 
-  const formatMessageTime = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return format(date, 'HH:mm')
-  }
-
-  const formatMessageDate = (dateStr: string) => {
+  const formatTime = (dateStr: string) => format(new Date(dateStr), 'HH:mm')
+  const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     if (isToday(date)) return language === 'pt' ? 'Hoje' : 'Today'
     if (isYesterday(date)) return language === 'pt' ? 'Ontem' : 'Yesterday'
     return format(date, 'dd/MM/yyyy', { locale: dateLocale })
   }
 
-  if (loading) {
+  if (loadingContact) {
     return (
       <div className="flex h-full w-full items-center justify-center p-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
@@ -160,79 +75,31 @@ export default function Chat() {
   if (!contact) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-12">
-        <p className="text-muted-foreground font-medium">{t('no_contacts_found')}</p>
+        <p className="text-muted-foreground font-medium">
+          {t('no_contacts_found') || 'Contact not found'}
+        </p>
         <Button
           variant="outline"
           onClick={() => navigate('/app/contacts')}
           className="rounded-full"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          {t('return_home')}
+          {t('return_home') || 'Back'}
         </Button>
       </div>
     )
   }
 
-  const groupedMessages: { [key: string]: WhatsAppMessage[] } = {}
+  const grouped: { [key: string]: typeof messages } = {}
   messages.forEach((msg) => {
-    const dateStr = formatMessageDate(msg.timestamp || msg.created_at || new Date().toISOString())
-    if (!groupedMessages[dateStr]) groupedMessages[dateStr] = []
-    groupedMessages[dateStr].push(msg)
+    const dateKey = formatDate(msg.timestamp || msg.created)
+    if (!grouped[dateKey]) grouped[dateKey] = []
+    grouped[dateKey].push(msg)
   })
 
   return (
-    <div className="max-w-7xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple flex gap-6">
-      <div className="hidden lg:flex w-80 flex-col bg-card border border-border/60 shadow-elevation rounded-[2.5rem] overflow-hidden shrink-0 h-full">
-        <div className="p-6 border-b border-border/40 bg-muted/20">
-          <h3 className="font-bold text-xl tracking-tight">Global Inbox</h3>
-          <p className="text-[13px] text-muted-foreground font-semibold mt-1">
-            All connected numbers
-          </p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin">
-          {contacts.map((c) => (
-            <div
-              key={c.id}
-              onClick={() => navigate(`/app/chat/${c.id}`)}
-              className={cn(
-                'flex items-center gap-3.5 p-3.5 rounded-2xl cursor-pointer transition-colors group',
-                c.id === id ? 'bg-primary/10 shadow-sm' : 'hover:bg-muted',
-              )}
-            >
-              <Avatar className="h-11 w-11 border border-border shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-300">
-                <AvatarImage src={c.profile_picture_url || ''} />
-                <AvatarFallback className="bg-background text-sm font-bold">
-                  {c.push_name?.charAt(0) || '#'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 overflow-hidden">
-                <div className="flex justify-between items-center mb-0.5">
-                  <p
-                    className={cn(
-                      'font-bold text-[14px] truncate',
-                      c.id === id ? 'text-primary' : 'text-foreground',
-                    )}
-                  >
-                    {c.push_name || 'Unknown'}
-                  </p>
-                  {c.last_message_from_me === false && (
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-sm" />
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-bold truncate tracking-tight shadow-sm border border-border/60">
-                    {integrations.find((i) => i.id === (c as any).instance_id)?.instance_name ||
-                      'WhatsApp'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
+    <div className="max-w-5xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple flex">
       <div className="flex-1 h-full flex flex-col bg-card border border-border/60 shadow-elevation rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-5 bg-background/50 backdrop-blur-xl border-b border-border/40 z-10 shrink-0">
           <div className="flex items-center gap-3 sm:gap-4">
             <Button
@@ -244,135 +111,91 @@ export default function Chat() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border border-border shadow-sm">
-              <AvatarImage src={contact.profile_picture_url || ''} />
+              <AvatarImage src={contact.avatar_url || ''} />
               <AvatarFallback className="bg-muted text-foreground font-bold text-lg">
-                {contact.push_name?.charAt(0) || '#'}
+                {contact.name?.charAt(0) || '#'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col max-w-[140px] sm:max-w-[260px]">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
-                  {contact.push_name || t('unknown')}
-                </span>
-                {(contact as any).instance_id && (
-                  <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-md whitespace-nowrap hidden sm:inline-block">
-                    {integrations.find((i) => i.id === (contact as any).instance_id)
-                      ?.instance_name || 'WhatsApp'}
-                  </span>
-                )}
-              </div>
+            <div className="flex flex-col max-w-[180px] sm:max-w-[260px]">
+              <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
+                {contact.name || 'Unknown'}
+              </span>
               <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
-                {contact.phone_number
-                  ? `+${contact.phone_number}`
-                  : contact.remote_jid.split('@')[0]}
+                {contact.whatsapp_id}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-muted/30 p-1 sm:p-1.5 rounded-full border border-border/40 shrink-0">
-            <div className="hidden sm:flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 text-primary shrink-0 ml-1">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <Select value={contact.ai_agent_id || 'none_disable'} onValueChange={handleAgentChange}>
-              <SelectTrigger className="w-[120px] sm:w-[160px] h-8 sm:h-9 rounded-full bg-transparent border-transparent shadow-none font-bold text-[11px] sm:text-[13px] hover:bg-muted/60 transition-colors focus:ring-0 focus:ring-offset-0 px-3">
-                <SelectValue placeholder={t('no_agent' as TranslationKey) || 'No Agent'} />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl border-border/60 shadow-elevation">
-                <SelectItem
-                  value="none_disable"
-                  className="font-bold text-muted-foreground text-xs sm:text-sm cursor-pointer hover:bg-accent focus:bg-accent rounded-xl py-2.5"
-                >
-                  {t('no_agent' as TranslationKey) || 'No Agent'}
-                </SelectItem>
-                {agents.map((agent) => (
-                  <SelectItem
-                    key={agent.id}
-                    value={agent.id}
-                    className="font-bold text-foreground text-xs sm:text-sm cursor-pointer hover:bg-accent focus:bg-accent rounded-xl py-2.5"
-                  >
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20">
+            <Sparkles className="h-4 w-4" />
+            <span className="text-[11px] sm:text-[13px] font-bold">Yasa AI</span>
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-zinc-50/30 dark:bg-background/30 scrollbar-thin">
-          {Object.entries(groupedMessages).map(([date, msgs]) => (
-            <div key={date} className="space-y-6">
-              <div className="flex justify-center my-4">
-                <span className="bg-card border border-border/40 text-muted-foreground text-[11px] font-bold px-3 py-1 rounded-full shadow-sm tracking-tight">
-                  {date}
-                </span>
-              </div>
-              {msgs.map((msg, i) => {
-                const isMe = msg.from_me
-                const showAvatar = !isMe && (i === 0 || msgs[i - 1].from_me !== isMe)
-                return (
-                  <div
-                    key={msg.id}
-                    className={cn('flex w-full', isMe ? 'justify-end' : 'justify-start')}
-                  >
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-zinc-50/30 dark:bg-background/30">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex justify-center py-12">
+              <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
+            </div>
+          ) : (
+            Object.entries(grouped).map(([date, msgs]) => (
+              <div key={date} className="space-y-4">
+                <div className="flex justify-center my-2">
+                  <span className="bg-card border border-border/40 text-muted-foreground text-[11px] font-bold px-3 py-1 rounded-full shadow-sm">
+                    {date}
+                  </span>
+                </div>
+                {msgs.map((msg) => {
+                  const isMe = msg.role !== 'user'
+                  return (
                     <div
-                      className={cn(
-                        'flex max-w-[85%] sm:max-w-[70%] gap-2.5',
-                        isMe ? 'flex-row-reverse' : 'flex-row',
-                      )}
+                      key={msg.id}
+                      className={cn('flex w-full', isMe ? 'justify-end' : 'justify-start')}
                     >
-                      {!isMe && (
-                        <div className="shrink-0 w-8 sm:w-10 flex flex-col justify-end">
-                          {showAvatar && (
-                            <Avatar className="h-8 w-8 border border-border/40 shadow-sm mb-1">
-                              <AvatarImage src={contact.profile_picture_url || ''} />
-                              <AvatarFallback className="bg-muted text-[10px] text-foreground font-bold">
-                                {contact.push_name?.charAt(0) || '#'}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                        </div>
-                      )}
                       <div
                         className={cn(
-                          'relative px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
+                          'max-w-[85%] sm:max-w-[70%] px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
                           isMe
                             ? 'bg-primary text-primary-foreground rounded-br-sm'
                             : 'bg-card border border-border/60 text-foreground rounded-bl-sm',
                         )}
                       >
-                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        {msg.role === 'assistant' && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide opacity-70 mb-1 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Yasa
+                          </span>
+                        )}
+                        <span className="whitespace-pre-wrap break-words">{msg.content}</span>
                         <span
                           className={cn(
-                            'text-[10px] sm:text-[11px] mt-1.5 self-end font-bold opacity-70 tracking-tight',
+                            'text-[10px] sm:text-[11px] mt-1.5 self-end font-bold opacity-70',
                             isMe ? 'text-primary-foreground' : 'text-muted-foreground',
                           )}
                         >
-                          {formatMessageTime(
-                            msg.timestamp || msg.created_at || new Date().toISOString(),
-                          )}
+                          {formatTime(msg.timestamp || msg.created)}
                         </span>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+                  )
+                })}
+              </div>
+            ))
+          )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
         <div className="p-3 sm:p-5 bg-background/50 backdrop-blur-xl border-t border-border/40 shrink-0 z-10">
-          <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 items-end">
-            <div className="relative flex-1">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={t('type_message' as TranslationKey) || 'Type a message...'}
-                className="w-full bg-card border-border shadow-sm rounded-2xl sm:rounded-full h-12 sm:h-14 px-5 sm:px-6 text-[14px] sm:text-[15px] font-medium pr-12 focus-visible:ring-primary/20 transition-all"
-              />
-            </div>
+          <form onSubmit={handleSend} className="flex gap-2.5 sm:gap-3 items-end">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={t('type_message') || 'Type a message...'}
+              className="w-full bg-card border-border shadow-sm rounded-2xl sm:rounded-full h-12 sm:h-14 px-5 sm:px-6 text-[14px] sm:text-[15px] font-medium pr-12 focus-visible:ring-primary/20 transition-all"
+            />
             <Button
               type="submit"
               disabled={isSending || !newMessage.trim()}

@@ -1,57 +1,37 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase/client'
-import { useAuth } from './use-auth'
-import { WhatsAppContact } from '@/lib/types'
+import { getContacts, Contact } from '@/services/contacts'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export const useContacts = (searchQuery: string = '') => {
-  const { user } = useAuth()
-  const [contacts, setContacts] = useState<WhatsAppContact[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!user) return
-
-    const fetchContacts = async () => {
-      let query = supabase
-        .from('whatsapp_contacts')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('score', { ascending: false, nullsFirst: false })
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-
-      if (searchQuery) {
-        query = query.or(
-          `push_name.ilike.%${searchQuery}%,phone_number.ilike.%${searchQuery}%,remote_jid.ilike.%${searchQuery}%`,
-        )
-      }
-
-      const { data } = await query
-      if (data) setContacts(data as WhatsAppContact[])
+  const load = async () => {
+    try {
+      const data = await getContacts()
+      setContacts(data)
+    } catch (err) {
+      console.error('[useContacts] fetch error:', err)
+    } finally {
       setLoading(false)
     }
+  }
 
-    fetchContacts()
+  useEffect(() => {
+    load()
+  }, [])
 
-    const channel = supabase
-      .channel('contacts_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'whatsapp_contacts',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          fetchContacts()
-        },
+  useRealtime('contacts', () => {
+    load()
+  })
+
+  const filtered = searchQuery
+    ? contacts.filter(
+        (c) =>
+          c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.whatsapp_id?.includes(searchQuery),
       )
-      .subscribe()
+    : contacts
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user, searchQuery])
-
-  return { contacts, loading }
+  return { contacts: filtered, loading }
 }

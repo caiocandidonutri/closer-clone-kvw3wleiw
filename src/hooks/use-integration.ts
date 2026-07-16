@@ -6,22 +6,15 @@ import React, {
   ReactNode,
   useCallback,
 } from 'react'
-import { supabase } from '@/lib/supabase/client'
+import pb from '@/lib/pocketbase/client'
 import { useAuth } from './use-auth'
-
-export interface UserIntegration {
-  id: string
-  user_id: string
-  instance_name: string | null
-  status: string
-  is_setup_completed: boolean
-  is_webhook_enabled: boolean
-}
+import { getIntegrations, Integration } from '@/services/integrations'
+import { useRealtime } from '@/hooks/use-realtime'
 
 interface IntegrationContextType {
-  integrations: UserIntegration[]
+  integrations: Integration[]
   loading: boolean
-  addIntegration: () => Promise<UserIntegration | null>
+  addIntegration: () => Promise<Integration | null>
   refreshIntegrations: () => Promise<void>
 }
 
@@ -35,75 +28,54 @@ export const useIntegration = () => {
 
 export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth()
-  const [integrations, setIntegrations] = useState<UserIntegration[]>([])
+  const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchIntegrations = useCallback(async () => {
-    if (!user) return
-    const { data } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
-
-    if (data) setIntegrations(data as UserIntegration[])
-    setLoading(false)
-  }, [user])
-
-  useEffect(() => {
     if (!user) {
       setIntegrations([])
       setLoading(false)
       return
     }
-
-    fetchIntegrations()
-
-    const channel = supabase
-      .channel('integration_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_integrations',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          fetchIntegrations()
-        },
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
+    try {
+      const data = await getIntegrations()
+      setIntegrations(data)
+    } catch (err) {
+      console.error('[useIntegration] fetch error:', err)
+    } finally {
+      setLoading(false)
     }
-  }, [user, fetchIntegrations])
+  }, [user])
+
+  useEffect(() => {
+    fetchIntegrations()
+  }, [fetchIntegrations])
+
+  useRealtime('integrations', () => {
+    fetchIntegrations()
+  })
 
   const addIntegration = async () => {
     if (!user) return null
-    const newIntegration = {
-      user_id: user.id,
+    const rec = await pb.collection('integrations').create({
+      name: 'WhatsApp',
+      provider: 'evolution_api',
       status: 'DISCONNECTED',
-      is_setup_completed: false,
-      is_webhook_enabled: false,
-    }
-    const { data: inserted } = await supabase
-      .from('user_integrations')
-      .insert(newIntegration as any)
-      .select()
-      .single()
-
-    if (inserted) {
-      setIntegrations((prev) => [...prev, inserted as UserIntegration])
-      return inserted as UserIntegration
-    }
-    return null
+      owner: user.id,
+    })
+    return rec as unknown as Integration
   }
 
   return React.createElement(
     IntegrationContext.Provider,
-    { value: { integrations, loading, addIntegration, refreshIntegrations: fetchIntegrations } },
+    {
+      value: {
+        integrations,
+        loading,
+        addIntegration,
+        refreshIntegrations: fetchIntegrations,
+      },
+    },
     children,
   )
 }

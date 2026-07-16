@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T01:14:21.813Z",
+  "generatedAt": "2026-07-16T01:22:29.992Z",
   "collections": [
     {
       "name": "users",
@@ -29,25 +29,238 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
         "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
       ]
+    },
+    {
+      "name": "integrations",
+      "type": "base",
+      "apiRules": {
+        "list": "owner = @request.auth.id",
+        "view": "owner = @request.auth.id",
+        "create": "owner = @request.auth.id",
+        "update": "owner = @request.auth.id",
+        "delete": "owner = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "instance_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "apikey",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "webhook_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "owner",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_integrations_instance_name ON integrations (instance_name)",
+        "CREATE INDEX idx_integrations_owner ON integrations (owner)"
+      ]
+    },
+    {
+      "name": "contacts",
+      "type": "base",
+      "apiRules": {
+        "list": "owner = @request.auth.id",
+        "view": "owner = @request.auth.id",
+        "create": "owner = @request.auth.id",
+        "update": "owner = @request.auth.id",
+        "delete": "owner = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "whatsapp_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pending", "responded"]
+        },
+        {
+          "name": "avatar_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "wait_time_seconds",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "identity_vector",
+          "type": "vector",
+          "required": false,
+          "system": false,
+          "vectorDimensions": 1536,
+          "vectorDistance": "cosine"
+        },
+        {
+          "name": "owner",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_contacts_whatsapp_id ON contacts (whatsapp_id)",
+        "CREATE INDEX idx_contacts_status ON contacts (status)",
+        "CREATE INDEX idx_contacts_owner ON contacts (owner)"
+      ]
+    },
+    {
+      "name": "messages",
+      "type": "base",
+      "apiRules": {
+        "list": "contact.owner = @request.auth.id",
+        "view": "contact.owner = @request.auth.id",
+        "create": "contact.owner = @request.auth.id",
+        "update": "contact.owner = @request.auth.id",
+        "delete": "contact.owner = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "contact",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contacts"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["user", "assistant", "system"]
+        },
+        {
+          "name": "timestamp",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_messages_contact ON messages (contact)"]
     }
   ]
 }

@@ -1,13 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useLanguage } from '@/hooks/use-language'
-import {
-  LayoutDashboard,
-  Users,
-  Settings as SettingsIcon,
-  Bot,
-  Columns,
-  Stethoscope,
-} from 'lucide-react'
+import { LayoutDashboard, Users, Settings as SettingsIcon, Stethoscope } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Sidebar() {
@@ -15,11 +8,9 @@ export function Sidebar() {
   const { t } = useLanguage()
 
   const navItems = [
-    { name: t('overview_nav') || 'Overview', path: '/app', icon: LayoutDashboard },
-    { name: t('pipeline_nav') || 'Pipeline', path: '/app/pipeline', icon: Columns },
+    { name: t('overview_nav') || 'Dashboard', path: '/app', icon: LayoutDashboard },
     { name: t('contacts_nav') || 'Contacts', path: '/app/contacts', icon: Users },
-    { name: 'AI Agents', path: '/app/agents', icon: Bot },
-    { name: t('settings_nav') || 'Settings', path: '/settings', icon: SettingsIcon },
+    { name: t('settings_nav') || 'Settings', path: '/app/settings', icon: SettingsIcon },
   ]
 
   return (
