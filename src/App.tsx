@@ -52,6 +52,7 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
               </Route>
 
+              <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>

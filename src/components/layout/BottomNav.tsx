@@ -11,7 +11,7 @@ export function BottomNav() {
     { name: t('overview_nav') || 'Overview', path: '/app', icon: LayoutDashboard },
     { name: t('pipeline_nav') || 'Pipeline', path: '/app/pipeline', icon: Columns },
     { name: t('contacts_nav') || 'Contacts', path: '/app/contacts', icon: Users },
-    { name: t('settings_nav') || 'Settings', path: '/settings', icon: SettingsIcon },
+    { name: t('settings_nav') || 'Settings', path: '/app/settings', icon: SettingsIcon },
   ]
 
   return (

@@ -71,7 +71,7 @@ export function Header() {
               asChild
               className="rounded-xl cursor-pointer my-1 focus:bg-muted py-2.5"
             >
-              <Link to="/settings" className="flex items-center gap-3 font-semibold">
+              <Link to="/app/settings" className="flex items-center gap-3 font-semibold">
                 <Settings className="h-4 w-4 text-muted-foreground" /> {t('settings_nav')}
               </Link>
             </DropdownMenuItem>
