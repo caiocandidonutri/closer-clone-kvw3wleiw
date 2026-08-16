@@ -349,7 +349,7 @@ export function YasaAgentConfig() {
               <Slider
                 id="openai_temp"
                 min={0}
-                max={1}
+                max={2}
                 step={0.1}
                 value={[form.temperature]}
                 onValueChange={(vals) => setForm({ ...form, temperature: vals[0] ?? 0.7 })}

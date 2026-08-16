@@ -65,8 +65,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const err = error as ClientResponseError
       const message =
         err?.status === 400 || err?.status === 401
-          ? 'Failed to authenticate'
-          : err?.message || 'Failed to authenticate'
+          ? 'Falha ao autenticar'
+          : err?.message || 'Falha ao autenticar'
       return { error: { ...err, message } }
     }
   }

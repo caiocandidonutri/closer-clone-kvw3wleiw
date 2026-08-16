@@ -17,6 +17,7 @@ export interface AIAgent {
   description: string | null
   system_prompt: string
   openai_api_key: string
+  gemini_api_key: string | null
   is_active: boolean
   created_at: string
   updated_at: string

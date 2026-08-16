@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Users, Clock, CheckCircle, Loader2, ArrowRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
-import { ptBR, enUS } from 'date-fns/locale'
+import { ptBR } from 'date-fns/locale'
 
 export default function Dashboard() {
-  const { t, language } = useLanguage()
-  const dateLocale = language === 'pt' ? ptBR : enUS
+  const { t } = useLanguage()
+  const dateLocale = ptBR
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -62,7 +62,7 @@ export default function Dashboard() {
           <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                Pending
+                {t('dashboard_pending')}
               </span>
               <div className="bg-amber-100 p-3 rounded-full text-amber-600">
                 <Clock className="h-5 w-5" />
@@ -77,7 +77,7 @@ export default function Dashboard() {
           <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                Responded
+                {t('dashboard_responded')}
               </span>
               <div className="bg-green-100 p-3 rounded-full text-green-600">
                 <CheckCircle className="h-5 w-5" />
@@ -92,7 +92,7 @@ export default function Dashboard() {
           <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                Avg Wait Time
+                {t('dashboard_avg_wait')}
               </span>
               <div className="bg-blue-100 p-3 rounded-full text-blue-600">
                 <Users className="h-5 w-5" />

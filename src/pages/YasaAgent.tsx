@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLanguage } from '@/hooks/use-language'
 import { useYasaConfig } from '@/hooks/use-yasa-config'
 import pb from '@/lib/pocketbase/client'
-import type { Message } from '@/lib/types'
+import type { Message } from '@/services/messages'
 import type { Contact } from '@/services/contacts'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -218,7 +218,9 @@ export default function YasaAgent() {
                   <p className="text-lg font-bold text-foreground">
                     {aiOnline ? t('agent_status_online') : t('agent_status_offline')}
                   </p>
-                  <p className="text-xs text-muted-foreground font-medium">{t('agent_status')}</p>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {t('agent_ia_status')}
+                  </p>
                 </div>
               </CardContent>
             </Card>

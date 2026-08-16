@@ -8,10 +8,10 @@ export function BottomNav() {
   const { t } = useLanguage()
 
   const navItems = [
-    { name: t('overview_nav') || 'Painel', path: '/app', icon: LayoutDashboard },
-    { name: t('agent_nav') || 'Agente Yasa', path: '/app/agent', icon: Bot },
-    { name: t('contacts_nav') || 'Contatos', path: '/app/contacts', icon: Users },
-    { name: t('settings_nav') || 'Configurações', path: '/app/settings', icon: SettingsIcon },
+    { name: t('overview_nav'), path: '/app', icon: LayoutDashboard },
+    { name: t('agent_nav'), path: '/app/agent', icon: Bot },
+    { name: t('contacts_nav'), path: '/app/contacts', icon: Users },
+    { name: t('settings_nav'), path: '/app/settings', icon: SettingsIcon },
   ]
 
   return (

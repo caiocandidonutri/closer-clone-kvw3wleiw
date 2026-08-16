@@ -52,7 +52,7 @@ export const disconnectWhatsapp = async (integrationId: string): Promise<{ succe
     body: { integrationId },
   })
 
-export const deleteIntegration = async (id: string): Promise<void> =>
+export const deleteIntegration = async (id: string): Promise<boolean> =>
   await pb.collection('integrations').delete(id)
 
 export const sendMessage = async (

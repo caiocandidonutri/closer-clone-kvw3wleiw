@@ -66,7 +66,7 @@ export default function Pipeline() {
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-80px)] bg-background p-6 pb-24 md:p-8 animate-in fade-in">
       <div className="mb-8 shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">{t('pipeline_nav') || 'Pipeline'}</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t('pipeline_nav')}</h2>
         <p className="text-muted-foreground mt-1 font-medium">
           Acompanhe e gerencie contatos num fluxo Kanban automatizado.
         </p>

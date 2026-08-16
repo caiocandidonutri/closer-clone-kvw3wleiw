@@ -30,11 +30,11 @@ export default function Settings() {
     setIsAdding(true)
     try {
       await addIntegration(newName || 'WhatsApp')
-      toast.success('Nova instância do WhatsApp criada')
+      toast.success(t('whatsapp_instance_created'))
       setDialogOpen(false)
       setNewName('')
     } catch (err: any) {
-      toast.error(err?.message || 'Falha ao criar instância')
+      toast.error(err?.message || t('whatsapp_instance_failed'))
     } finally {
       setIsAdding(false)
     }
@@ -52,16 +52,12 @@ export default function Settings() {
     <div className="max-w-4xl mx-auto space-y-8 p-4 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            {t('settings') || 'Settings'}
-          </h2>
-          <p className="text-muted-foreground mt-1 font-medium">
-            {t('settings_desc') || 'Manage your WhatsApp connections'}
-          </p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t('settings')}</h2>
+          <p className="text-muted-foreground mt-1 font-medium">{t('settings_desc')}</p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="rounded-full px-6 shadow-elevation">
           <Plus className="mr-2 h-4 w-4" />
-          Conectar novo número
+          {t('connect_new_number')}
         </Button>
       </div>
 
@@ -69,12 +65,8 @@ export default function Settings() {
         {integrations.length === 0 ? (
           <div className="text-center py-20 bg-card rounded-[2rem] border border-border shadow-subtle">
             <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-foreground">
-              Nenhum número do WhatsApp conectado
-            </h3>
-            <p className="text-muted-foreground mt-1">
-              Clique no botão acima para vincular seu primeiro número.
-            </p>
+            <h3 className="text-lg font-bold text-foreground">{t('no_whatsapp_title')}</h3>
+            <p className="text-muted-foreground mt-1">{t('no_whatsapp_desc')}</p>
           </div>
         ) : (
           integrations.map((integ) => (
@@ -99,16 +91,14 @@ export default function Settings() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Adicionar número do WhatsApp</DialogTitle>
-            <DialogDescription>
-              Digite um nome para identificar este número do WhatsApp.
-            </DialogDescription>
+            <DialogTitle>{t('whatsapp_add_title')}</DialogTitle>
+            <DialogDescription>{t('whatsapp_add_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4">
-            <Label htmlFor="name">Nome da instância</Label>
+            <Label htmlFor="name">{t('instance_name')}</Label>
             <Input
               id="name"
-              placeholder="ex: Vendas, Suporte, Pessoal"
+              placeholder={t('instance_name_placeholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
@@ -116,11 +106,11 @@ export default function Settings() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancelar
+              {t('cancel')}
             </Button>
             <Button onClick={handleAdd} disabled={isAdding}>
               {isAdding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Criar instância
+              {t('create_instance')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,30 +1,33 @@
 import { useState } from 'react'
 import { useContacts } from '@/hooks/use-contacts'
+import { useLanguage } from '@/hooks/use-language'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Search, MessageCircle, Clock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 export function ContactFeed() {
   const [search, setSearch] = useState('')
   const { contacts, loading } = useContacts(search)
+  const { t } = useLanguage()
   const navigate = useNavigate()
 
   return (
     <Card className="shadow-subtle border-border/40 rounded-3xl flex flex-col h-[500px] bg-white">
       <CardHeader className="pb-4 border-b border-border/40 px-6 pt-6">
         <CardTitle className="text-lg font-semibold flex justify-between items-center">
-          Top Contacts
+          {t('top_leads')}
           <span className="text-[11px] font-semibold bg-zinc-100 text-zinc-600 px-2.5 py-1 rounded-full">
-            {contacts.length} Total
+            {contacts.length} {t('total_contacts')}
           </span>
         </CardTitle>
         <div className="relative mt-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
           <Input
-            placeholder="Search contacts..."
+            placeholder={t('search_placeholder')}
             className="pl-9 bg-zinc-50 border-transparent focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-300 rounded-full h-10 text-[13px] font-medium"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -47,7 +50,7 @@ export function ContactFeed() {
         ) : contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-zinc-400 p-6 text-center">
             <MessageCircle className="h-10 w-10 text-zinc-200 mb-3" />
-            <p className="font-medium text-sm text-zinc-500">No contacts found</p>
+            <p className="font-medium text-sm text-zinc-500">{t('no_contacts_found')}</p>
           </div>
         ) : (
           <ul className="divide-y divide-border/30">
@@ -66,7 +69,7 @@ export function ContactFeed() {
                   </Avatar>
                   <div>
                     <p className="font-semibold text-[14px] text-foreground tracking-tight truncate max-w-[150px] sm:max-w-[180px] group-hover:text-primary transition-colors">
-                      {contact.push_name || 'Unknown Contact'}
+                      {contact.push_name || t('unknown')}
                     </p>
                     <p className="text-[12px] font-medium text-muted-foreground truncate max-w-[150px] sm:max-w-[180px]">
                       {contact.remote_jid.split('@')[0]}
@@ -76,21 +79,24 @@ export function ContactFeed() {
                 <div className="flex flex-col items-end gap-1.5">
                   {contact.last_message_from_me === false ? (
                     <div className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-md tabular-nums">
-                      Waiting
+                      {t('dashboard_pending')}
                     </div>
                   ) : contact.last_message_from_me === true ? (
                     <div className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-md tabular-nums">
-                      Responded
+                      {t('dashboard_responded')}
                     </div>
                   ) : contact.score !== null && contact.score > 0 ? (
                     <div className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md tabular-nums">
-                      {contact.score} pts
+                      {contact.score} {t('pts')}
                     </div>
                   ) : null}
                   {contact.last_message_at && (
                     <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1 group-hover:text-zinc-600 transition-colors">
                       <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(contact.last_message_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(contact.last_message_at), {
+                        addSuffix: true,
+                        locale: ptBR,
+                      })}
                     </div>
                   )}
                 </div>

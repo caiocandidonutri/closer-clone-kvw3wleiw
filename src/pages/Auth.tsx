@@ -64,15 +64,13 @@ export default function Auth() {
               {mode === 'signin' ? t('sign_in') : t('get_started')}
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              {mode === 'signin'
-                ? 'Entre na sua conta para continuar'
-                : 'Crie sua conta para começar'}
+              {mode === 'signin' ? t('auth_signin_desc') : t('auth_signup_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('email_label')}</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -87,7 +85,7 @@ export default function Auth() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password">{t('password_label')}</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -125,7 +123,7 @@ export default function Auth() {
                 }}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium"
               >
-                {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
+                {mode === 'signin' ? t('no_account_signup') : t('have_account_signin')}
               </button>
             </div>
           </CardContent>

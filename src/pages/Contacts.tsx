@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Search, UserRound, Loader2, MessageSquare, Clock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
-import { ptBR, enUS } from 'date-fns/locale'
+import { ptBR } from 'date-fns/locale'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -19,8 +19,8 @@ const CATEGORIES = [
 ]
 
 export default function Contacts() {
-  const { t, language } = useLanguage()
-  const dateLocale = language === 'pt' ? ptBR : enUS
+  const { t } = useLanguage()
+  const dateLocale = ptBR
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState('All')
   const { contacts, loading } = useContacts(search)

@@ -96,7 +96,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       if (data.status === 'CONNECTED') {
         setQrCode(null)
         setConnectionState('connected')
-        toast.success(t('connected') || 'WhatsApp connected!')
+        toast.success(t('connected'))
         onStatusChange()
       } else if (data.base64) {
         setQrCode(
@@ -108,7 +108,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
         setError(data.error)
         setConnectionState('failed')
       } else {
-        setError(t('qr_not_ready') || 'QR code not ready. Please try again.')
+        setError(t('qr_not_ready'))
         setConnectionState('failed')
       }
     } catch (err: unknown) {
@@ -127,7 +127,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       await disconnectWhatsapp(integration.id)
       setQrCode(null)
       setConnectionState('idle')
-      toast.success(t('disconnected_success') || 'WhatsApp disconnected')
+      toast.success(t('disconnected_success'))
       onStatusChange()
     } catch (err: unknown) {
       toast.error(extractErrorMessage(err))
@@ -139,7 +139,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
   const handleDelete = async () => {
     try {
       await deleteIntegration(integration.id)
-      toast.success(t('integration_removed') || 'Integration removed')
+      toast.success(t('integration_removed'))
       onStatusChange()
     } catch (err: unknown) {
       toast.error(extractErrorMessage(err))
@@ -228,7 +228,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
               className="ml-auto shrink-0 text-destructive"
             >
               <RefreshCw className="h-4 w-4 mr-1" />
-              {t('try_again') || 'Try Again'}
+              {t('try_again')}
             </Button>
           </div>
         )}
@@ -238,21 +238,15 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
               <img src={qrCode} alt="WhatsApp QR Code" className="w-56 h-56" />
             </div>
             <h4 className="font-semibold text-foreground mb-1">
-              {connectionState === 'authenticating'
-                ? t('authenticating') || 'Authenticating...'
-                : t('scan_to_connect') || 'Scan to connect'}
+              {connectionState === 'authenticating' ? t('authenticating') : t('scan_to_connect')}
             </h4>
             <p className="text-sm font-medium text-muted-foreground text-center max-w-[250px]">
-              {connectionState === 'authenticating'
-                ? t('authenticating_desc') || 'Waiting for WhatsApp to confirm connection...'
-                : t('scan_desc') || 'Open WhatsApp → Settings → Linked Devices'}
+              {connectionState === 'authenticating' ? t('authenticating_desc') : t('scan_desc')}
             </p>
             {connectionState === 'authenticating' && (
               <div className="flex items-center gap-2 mt-3">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
-                  {t('connecting') || 'Connecting...'}
-                </span>
+                <span className="text-xs text-muted-foreground">{t('connecting')}</span>
               </div>
             )}
           </div>
@@ -260,9 +254,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
         {connectionState === 'generating' && (
           <div className="flex flex-col items-center justify-center p-8 min-h-[200px] gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm font-medium text-muted-foreground">
-              {t('generating_qr') || 'Generating QR Code...'}
-            </p>
+            <p className="text-sm font-medium text-muted-foreground">{t('generating_qr')}</p>
           </div>
         )}
       </CardContent>
@@ -270,7 +262,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
       <CardFooter className="bg-muted/30 border-t border-border/40 py-5 px-8 flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center">
         <div className="text-sm font-medium text-muted-foreground text-center sm:text-left">
           {isConnected
-            ? t('actively_connected') || 'Actively connected'
+            ? t('actively_connected')
             : connectionState === 'idle'
               ? t('configure_instance_short')
               : badge.label}
@@ -303,7 +295,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
               ) : (
                 <Unplug className="mr-2 h-4 w-4" />
               )}
-              {t('disconnect') || 'Disconnect'}
+              {t('disconnect')}
             </Button>
           ) : (
             !showError && (
@@ -317,7 +309,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
                 ) : (
                   <Plug className="mr-2 h-4 w-4" />
                 )}
-                {t('connect_whatsapp') || 'Connect'}
+                {t('connect_whatsapp')}
               </Button>
             )
           )}

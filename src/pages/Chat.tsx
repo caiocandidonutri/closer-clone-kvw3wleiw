@@ -21,15 +21,15 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
-import { ptBR, enUS } from 'date-fns/locale'
+import { ptBR } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import type { Message } from '@/lib/types'
+import type { Message } from '@/services/messages'
 
 export default function Chat() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { t, language } = useLanguage()
-  const dateLocale = language === 'pt' ? ptBR : enUS
+  const { t } = useLanguage()
+  const dateLocale = ptBR
 
   const [contact, setContact] = useState<Contact | null>(null)
   const [loadingContact, setLoadingContact] = useState(true)
@@ -66,7 +66,7 @@ export default function Chat() {
     try {
       await sendMessage(id, text)
     } catch (err: any) {
-      toast.error(err?.message || 'Falha ao enviar mensagem')
+      toast.error(err?.message || t('message_send_failed'))
     } finally {
       setIsSending(false)
     }
@@ -80,7 +80,7 @@ export default function Chat() {
     try {
       const result = await yasaChat({ message: text, contact_id: id })
       if (result.needs_human) {
-        toast.info('A Yasa sinalizou que esta dúvida precisa do Dr. Caio.')
+        toast.info(t('yasa_needs_human'))
       }
     } catch (err: any) {
       toast.error(err?.message || t('yasa_reply_failed'))
@@ -138,8 +138,8 @@ export default function Chat() {
   const formatTime = (dateStr: string) => format(new Date(dateStr), 'HH:mm')
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
-    if (isToday(date)) return language === 'pt' ? 'Hoje' : 'Today'
-    if (isYesterday(date)) return language === 'pt' ? 'Ontem' : 'Yesterday'
+    if (isToday(date)) return 'Hoje'
+    if (isYesterday(date)) return 'Ontem'
     return format(date, 'dd/MM/yyyy', { locale: dateLocale })
   }
 
@@ -154,16 +154,14 @@ export default function Chat() {
   if (!contact) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-12">
-        <p className="text-muted-foreground font-medium">
-          {t('no_contacts_found') || 'Contato não encontrado'}
-        </p>
+        <p className="text-muted-foreground font-medium">{t('contact_not_found')}</p>
         <Button
           variant="outline"
           onClick={() => navigate('/app/contacts')}
           className="rounded-full"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          {t('return_home') || 'Voltar'}
+          {t('return')}
         </Button>
       </div>
     )
@@ -358,7 +356,7 @@ export default function Chat() {
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={t('type_message') || 'Digite uma mensagem...'}
+              placeholder={t('type_message')}
               className="w-full bg-card border-border shadow-sm rounded-2xl sm:rounded-full h-12 sm:h-14 px-5 sm:px-6 text-[14px] sm:text-[15px] font-medium focus-visible:ring-primary/20 transition-all"
             />
             <Button

@@ -81,7 +81,7 @@ export default function Onboarding() {
 
     timeoutRef.current = setTimeout(() => {
       setLoading(false)
-      setError(t('connection_timeout') || 'Connection timeout. Please try again.')
+      setError(t('connection_timeout'))
     }, QR_TIMEOUT_MS)
 
     try {
@@ -97,13 +97,11 @@ export default function Onboarding() {
       } else if (data.error) {
         setError(data.error)
       } else {
-        setError(t('qr_not_ready') || 'QR code not ready. Please try again.')
+        setError(t('qr_not_ready'))
       }
     } catch (err: any) {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      setError(
-        err?.response?.message || err?.message || t('failed_connect') || 'Failed to connect.',
-      )
+      setError(err?.response?.message || err?.message || t('failed_connect'))
     } finally {
       setLoading(false)
     }
@@ -131,7 +129,7 @@ export default function Onboarding() {
       await new Promise((r) => setTimeout(r, 600))
 
       setProgress(100)
-      setSyncStatus(t('setup_complete') || 'Setup Complete!')
+      setSyncStatus(t('setup_complete'))
       toast.success(t('onboarding_complete'))
 
       setTimeout(() => navigate('/app', { replace: true }), 1000)
@@ -185,7 +183,7 @@ export default function Onboarding() {
                   </div>
                   <Button onClick={fetchQR} className="rounded-full px-6">
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    {t('try_again') || 'Try Again'}
+                    {t('try_again')}
                   </Button>
                 </div>
               ) : qrCode ? (
@@ -195,9 +193,7 @@ export default function Onboarding() {
               ) : (
                 <div className="w-64 h-64 bg-muted/50 flex flex-col items-center justify-center rounded-3xl border border-dashed border-border gap-3">
                   <Loader2 className="animate-spin h-10 w-10 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground font-medium">
-                    {t('generating_qr') || 'Generating QR Code...'}
-                  </p>
+                  <p className="text-sm text-muted-foreground font-medium">{t('generating_qr')}</p>
                 </div>
               )}
               {!error && (
