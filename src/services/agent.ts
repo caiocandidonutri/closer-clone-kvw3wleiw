@@ -18,12 +18,17 @@ export interface CreateTemplateInput {
 }
 
 export const createTemplate = async (input: CreateTemplateInput): Promise<MealPlanTemplate> => {
+  const ownerId = pb.authStore.model?.id
+  if (!ownerId) {
+    throw new Error('Usuário não autenticado. Faça login para criar um modelo.')
+  }
   const formData = new FormData()
   formData.append('title', input.title)
   if (input.description) formData.append('description', input.description)
   if (input.topic) formData.append('topic', input.topic)
   if (input.content_text) formData.append('content_text', input.content_text)
   formData.append('is_active', input.is_active === false ? 'false' : 'true')
+  formData.append('owner', ownerId)
   if (input.file) formData.append('file', input.file)
   const record = await pb.collection('meal_plan_templates').create(formData)
   return record as unknown as MealPlanTemplate
