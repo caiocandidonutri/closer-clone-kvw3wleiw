@@ -16,6 +16,7 @@ import Chat from './pages/Chat'
 import Onboarding from './pages/Onboarding'
 import NotFound from './pages/NotFound'
 import YasaAgent from './pages/YasaAgent'
+import Recipes from './pages/Recipes'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -51,6 +52,7 @@ const App = () => (
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="chat/:id" element={<Chat />} />
                 <Route path="agent" element={<YasaAgent />} />
+                <Route path="recipes" element={<Recipes />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
 

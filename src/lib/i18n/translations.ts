@@ -420,6 +420,44 @@ export const translations = {
     ask_yasa: 'Perguntar à Yasa',
     contact_not_found: 'Contato não encontrado',
     unexpected_error: 'Ocorreu um erro inesperado.',
+
+    recipes_nav: 'Receitas',
+    recipes_title: 'Biblioteca de Receitas',
+    recipes_desc:
+      'PDFs de receitas que a Yasa usa como base de conhecimento segura ao sugerir refeições, lanches e trocas.',
+    recipes_add: 'Adicionar receita',
+    recipes_upload_multiple: 'Enviar vários PDFs',
+    recipes_edit: 'Editar receita',
+    recipes_empty: 'Nenhuma receita cadastrada ainda.',
+    recipes_empty_desc:
+      'Adicione PDFs de receitas para a Yasa sugerir pratos, lanches e substituições com base neles.',
+    recipe_title: 'Título da receita',
+    recipe_description: 'Descrição (opcional)',
+    recipe_content: 'Conteúdo da receita (texto)',
+    recipe_content_help:
+      'Cole aqui o conteúdo da receita ou um resumo. A Yasa usará este texto como fonte segura.',
+    recipe_file: 'Arquivo PDF',
+    recipe_file_help: 'Upload de PDF, imagem ou documento (até 10 MB).',
+    recipe_active: 'Ativa',
+    recipe_save: 'Salvar receita',
+    recipe_uploaded_at: 'Enviado em',
+    recipe_upload_progress: 'Enviando {done} de {total}...',
+    recipe_upload_done: '{done} receita(s) enviada(s) com sucesso',
+    recipe_upload_errors: '{count} arquivo(s) falharam no upload',
+    recipes_select_files: 'Selecionar arquivos',
+    recipes_drop_hint: 'Selecione um ou mais PDFs, imagens ou documentos de uma vez',
+    recipes_batch_title_hint:
+      'O título de cada receita será o nome do arquivo. Você pode editar depois.',
+
+    templates_batch_upload: 'Enviar vários arquivos',
+    templates_batch_hint:
+      'Selecione vários PDFs, imagens ou documentos de uma vez. O título de cada modelo será o nome do arquivo.',
+    batch_select_files: 'Selecionar arquivos',
+    batch_uploading: 'Enviando {done} de {total}...',
+    batch_done: '{done} arquivo(s) enviado(s) com sucesso',
+    batch_errors: '{count} arquivo(s) falharam',
+    batch_file_success: 'Enviado',
+    batch_file_error: 'Falhou',
   },
   pt: {
     sign_in: 'Entrar',
@@ -842,5 +880,43 @@ export const translations = {
     ask_yasa: 'Perguntar à Yasa',
     contact_not_found: 'Contato não encontrado',
     unexpected_error: 'Ocorreu um erro inesperado.',
+
+    recipes_nav: 'Receitas',
+    recipes_title: 'Biblioteca de Receitas',
+    recipes_desc:
+      'PDFs de receitas que a Yasa usa como base de conhecimento segura ao sugerir refeições, lanches e trocas.',
+    recipes_add: 'Adicionar receita',
+    recipes_upload_multiple: 'Enviar vários PDFs',
+    recipes_edit: 'Editar receita',
+    recipes_empty: 'Nenhuma receita cadastrada ainda.',
+    recipes_empty_desc:
+      'Adicione PDFs de receitas para a Yasa sugerir pratos, lanches e substituições com base neles.',
+    recipe_title: 'Título da receita',
+    recipe_description: 'Descrição (opcional)',
+    recipe_content: 'Conteúdo da receita (texto)',
+    recipe_content_help:
+      'Cole aqui o conteúdo da receita ou um resumo. A Yasa usará este texto como fonte segura.',
+    recipe_file: 'Arquivo PDF',
+    recipe_file_help: 'Upload de PDF, imagem ou documento (até 10 MB).',
+    recipe_active: 'Ativa',
+    recipe_save: 'Salvar receita',
+    recipe_uploaded_at: 'Enviado em',
+    recipe_upload_progress: 'Enviando {done} de {total}...',
+    recipe_upload_done: '{done} receita(s) enviada(s) com sucesso',
+    recipe_upload_errors: '{count} arquivo(s) falharam no upload',
+    recipes_select_files: 'Selecionar arquivos',
+    recipes_drop_hint: 'Selecione um ou mais PDFs, imagens ou documentos de uma vez',
+    recipes_batch_title_hint:
+      'O título de cada receita será o nome do arquivo. Você pode editar depois.',
+
+    templates_batch_upload: 'Enviar vários arquivos',
+    templates_batch_hint:
+      'Selecione vários PDFs, imagens ou documentos de uma vez. O título de cada modelo será o nome do arquivo.',
+    batch_select_files: 'Selecionar arquivos',
+    batch_uploading: 'Enviando {done} de {total}...',
+    batch_done: '{done} arquivo(s) enviado(s) com sucesso',
+    batch_errors: '{count} arquivo(s) falharam',
+    batch_file_success: 'Enviado',
+    batch_file_error: 'Falhou',
   },
 }

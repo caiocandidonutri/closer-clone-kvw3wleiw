@@ -99,6 +99,18 @@ export interface MealPlanTemplate {
   updated: string
 }
 
+export interface Recipe {
+  id: string
+  owner: string
+  title: string
+  description: string
+  file: string
+  content_text: string
+  is_active: boolean
+  created: string
+  updated: string
+}
+
 export interface YasaFeedback {
   id: string
   owner: string

@@ -119,6 +119,28 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
         extra += 'Mensagem de boas-vindas (use ao iniciar uma conversa): ' + welcome + '\n'
     }
 
+    // Active recipes — PRIORITIZED as the safe knowledge base.
+    let recs = []
+    try {
+      recs = $app.findRecordsByFilter('recipes', 'owner = {:uid}', '-created', 50, 0, {
+        uid: owner,
+      })
+    } catch (_) {}
+    const activeRecs = []
+    for (const r of recs) {
+      if (r.getBool('is_active') === false) continue
+      const ct = r.getString('content_text')
+      if (!ct) continue
+      activeRecs.push('— Receita: ' + r.getString('title') + '\n' + ct)
+    }
+    if (activeRecs.length > 0) {
+      extra +=
+        '\n═══ BIBLIOTECA DE RECEITAS DO DR. CAIO — FONTE SEGURA ═══\n' +
+        'Quando o paciente pedir receita, sugestão de lanche, jantar, almoço ou troca alimentar, BUSQUE PRIMEIRO nesta base antes de usar conhecimento geral. ' +
+        'A base abaixo é a fonte segura e complementar ao seu conhecimento. Priorize sempre o conteúdo da base.\n\n' +
+        activeRecs.join('\n\n')
+    }
+
     // Active materials
     let mats = []
     try {
@@ -135,7 +157,7 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
     }
     if (activeMats.length > 0) {
       extra +=
-        '\n═══ MATERIAIS (PDFs) DISPONÍVEIS ═══\n' +
+        '\n═══ MATERIAIS (PDFs) DISPONÍVEIS — FONTE SEGURA ═══\n' +
         'Use o conteúdo abaixo como base quando o assunto da conversa tiver relação.\n' +
         activeMats.join('\n\n')
     }
@@ -156,8 +178,8 @@ routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
     }
     if (activeTpls.length > 0) {
       extra +=
-        '\n═══ MODELOS DE PLANOS ALIMENTARES DO DR. CAIO ═══\n' +
-        'Use os modelos abaixo como referência quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições.\n' +
+        '\n═══ MODELOS DE PLANOS ALIMENTARES DO DR. CAIO — FONTE SEGURA ═══\n' +
+        'Quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições, BUSQUE PRIMEIRO nestes modelos antes de usar conhecimento geral. Eles são a referência oficial do Dr. Caio.\n' +
         activeTpls.join('\n\n')
     }
     return base + extra

@@ -15,9 +15,17 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Edit2, Loader2, ClipboardList, Paperclip } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, ClipboardList, Paperclip, UploadCloud } from 'lucide-react'
 import type { MealPlanTemplate } from '@/lib/types'
 import { templateFileUrl } from '@/services/agent'
+import { BatchUpload } from '@/components/settings/BatchUpload'
+
+const ACCEPTED = 'application/pdf,image/*,.doc,.docx,.txt'
+const FILE_EXT_BADGE = (file?: string) => {
+  if (!file) return null
+  const ext = file.split('.').pop()?.toUpperCase()
+  return ext || 'PDF'
+}
 
 interface FormState {
   title: string
@@ -107,7 +115,28 @@ export function TemplatesManager() {
         </div>
       </CardHeader>
 
-      <CardContent className="p-6 md:p-8">
+      <CardContent className="p-6 md:p-8 space-y-6">
+        {/* Batch upload */}
+        <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <UploadCloud className="h-4 w-4 text-primary" />
+            <span className="text-sm font-bold text-foreground">{t('templates_batch_upload')}</span>
+          </div>
+          <BatchUpload
+            accept={ACCEPTED}
+            createOne={async (file) => {
+              await create({ title: file.name.replace(/\.[^.]+$/, ''), file })
+            }}
+            labels={{
+              selectFiles: t('batch_select_files'),
+              hint: t('templates_batch_hint'),
+              uploading: (done, total) => t('batch_uploading', { done, total }),
+              success: t('batch_file_success'),
+              error: t('batch_file_error'),
+            }}
+          />
+        </div>
+
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
@@ -258,7 +287,7 @@ export function TemplatesManager() {
                 <Input
                   id="t_file"
                   type="file"
-                  accept="application/pdf"
+                  accept={ACCEPTED}
                   onChange={(e) => setForm({ ...form, file: e.target.files?.[0] ?? null })}
                   className="rounded-xl"
                 />
