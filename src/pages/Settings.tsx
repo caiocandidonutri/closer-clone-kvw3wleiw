@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useIntegration } from '@/hooks/use-integration'
 import { useLanguage } from '@/hooks/use-language'
 import { IntegrationCard } from '@/components/settings/IntegrationCard'
+import { YasaAgentConfig } from '@/components/settings/YasaAgentConfig'
+import { MaterialsManager } from '@/components/settings/MaterialsManager'
+import { TemplatesManager } from '@/components/settings/TemplatesManager'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -27,11 +30,11 @@ export default function Settings() {
     setIsAdding(true)
     try {
       await addIntegration(newName || 'WhatsApp')
-      toast.success('New WhatsApp instance created')
+      toast.success('Nova instância do WhatsApp criada')
       setDialogOpen(false)
       setNewName('')
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to create instance')
+      toast.error(err?.message || 'Falha ao criar instância')
     } finally {
       setIsAdding(false)
     }
@@ -58,7 +61,7 @@ export default function Settings() {
         </div>
         <Button onClick={() => setDialogOpen(true)} className="rounded-full px-6 shadow-elevation">
           <Plus className="mr-2 h-4 w-4" />
-          Connect New Number
+          Conectar novo número
         </Button>
       </div>
 
@@ -66,9 +69,11 @@ export default function Settings() {
         {integrations.length === 0 ? (
           <div className="text-center py-20 bg-card rounded-[2rem] border border-border shadow-subtle">
             <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-foreground">No WhatsApp Numbers Connected</h3>
+            <h3 className="text-lg font-bold text-foreground">
+              Nenhum número do WhatsApp conectado
+            </h3>
             <p className="text-muted-foreground mt-1">
-              Click the button above to link your first number.
+              Clique no botão acima para vincular seu primeiro número.
             </p>
           </div>
         ) : (
@@ -82,17 +87,28 @@ export default function Settings() {
         )}
       </div>
 
+      {/* Yasa AI Agent Configuration */}
+      <YasaAgentConfig />
+
+      {/* Materials / PDFs */}
+      <MaterialsManager />
+
+      {/* Meal Plan Templates */}
+      <TemplatesManager />
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add WhatsApp Number</DialogTitle>
-            <DialogDescription>Enter a name to identify this WhatsApp number.</DialogDescription>
+            <DialogTitle>Adicionar número do WhatsApp</DialogTitle>
+            <DialogDescription>
+              Digite um nome para identificar este número do WhatsApp.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4">
-            <Label htmlFor="name">Instance Name</Label>
+            <Label htmlFor="name">Nome da instância</Label>
             <Input
               id="name"
-              placeholder="e.g. Sales, Support, Personal"
+              placeholder="ex: Vendas, Suporte, Pessoal"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
@@ -100,11 +116,11 @@ export default function Settings() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handleAdd} disabled={isAdding}>
               {isAdding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Instance
+              Criar instância
             </Button>
           </DialogFooter>
         </DialogContent>

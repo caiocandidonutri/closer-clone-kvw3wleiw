@@ -58,7 +58,7 @@ export function ConnectionCard() {
           className="w-full h-16 border-dashed rounded-3xl border-2 hover:bg-muted/50 transition-colors text-muted-foreground font-semibold"
         >
           <Plus className="mr-2 h-5 w-5" />
-          Add WhatsApp Number
+          Adicionar número do WhatsApp
         </Button>
       )}
     </div>
@@ -106,7 +106,7 @@ function SingleConnectionCard({
       }
     } catch (err: any) {
       console.error(err)
-      setError(err.message || 'Service temporarily unavailable. Please contact support.')
+      setError(err.message || 'Serviço temporariamente indisponível. Contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -142,7 +142,7 @@ function SingleConnectionCard({
     onStatusChange()
     setQrCode(null)
     setLoading(false)
-    toast.success('Simulation: Connected to WhatsApp!')
+    toast.success('Simulação: conectado ao WhatsApp!')
   }
 
   const handleReset = async () => {

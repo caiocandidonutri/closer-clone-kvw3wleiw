@@ -22,8 +22,8 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('app_language')
     if (saved === 'en' || saved === 'pt') return saved
-    const browserLang = navigator.language.split('-')[0]
-    return browserLang === 'pt' ? 'pt' : 'en'
+    // Default to Portuguese (pt-BR) for this product.
+    return 'pt'
   })
 
   const setLanguage = (lang: Language) => {

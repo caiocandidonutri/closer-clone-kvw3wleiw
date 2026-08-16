@@ -6,48 +6,53 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* WhatsApp-inspired palette */
+    --wa-green: 142 71% 45%; /* #25D366 */
+    --wa-teal: 172 75% 31%; /* #128C7E */
+    --wa-dark: 175 87% 18%; /* #075E54 */
+
+    --background: 0 0% 100%;
+    --foreground: 175 40% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 175 40% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 222 47% 11%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 214 32% 91%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 214 32% 91%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 214 32% 91%;
-    --accent-foreground: 222 47% 11%;
+    --popover-foreground: 175 40% 12%;
+    --primary: 142 71% 45%; /* #25D366 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 30% 96%;
+    --secondary-foreground: 175 40% 12%;
+    --muted: 150 20% 96%;
+    --muted-foreground: 172 12% 42%;
+    --accent: 150 40% 95%;
+    --accent-foreground: 175 87% 18%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 222 47% 11%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 20% 92%;
+    --input: 150 20% 92%;
+    --ring: 142 71% 45%;
 
-    --radius: 1.5rem;
+    --radius: 1.25rem;
 
-    --sidebar-background: 210 40% 98%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 222 47% 11%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 214 32% 91%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 222 47% 11%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 175 40% 12%;
+    --sidebar-primary: 175 87% 18%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 150 40% 95%;
+    --sidebar-accent-foreground: 175 87% 18%;
+    --sidebar-border: 150 20% 92%;
+    --sidebar-ring: 142 71% 45%;
 
-    --chart-1: 222 47% 11%;
-    --chart-2: 215 25% 27%;
-    --chart-3: 215 16% 47%;
-    --chart-4: 214 32% 91%;
-    --chart-5: 210 40% 98%;
+    --chart-1: 175 87% 18%;
+    --chart-2: 172 75% 31%;
+    --chart-3: 142 71% 45%;
+    --chart-4: 150 30% 70%;
+    --chart-5: 150 20% 92%;
 
-    --class-hot: 222 47% 11%;
-    --class-warm: 226 71% 40%;
-    --class-lukewarm: 213 94% 68%;
-    --class-cold: 214 100% 91%;
-    --class-dnc: 215 16% 47%;
+    --class-hot: 175 87% 18%;
+    --class-warm: 172 75% 31%;
+    --class-lukewarm: 142 71% 45%;
+    --class-cold: 150 30% 88%;
+    --class-dnc: 172 12% 42%;
   }
 
   body {

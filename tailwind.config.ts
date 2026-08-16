@@ -103,6 +103,11 @@ export default {
           cold: 'hsl(var(--class-cold))',
           dnc: 'hsl(var(--class-dnc))',
         },
+        whatsapp: {
+          green: 'hsl(var(--wa-green))',
+          teal: 'hsl(var(--wa-teal))',
+          dark: 'hsl(var(--wa-dark))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -114,9 +119,10 @@ export default {
         height: 'height',
       },
       boxShadow: {
-        subtle: '0 2px 10px rgba(25, 37, 36, 0.04), 0 1px 2px rgba(25, 37, 36, 0.02)',
-        elevation: '0 10px 30px rgba(25, 37, 36, 0.08), 0 4px 12px rgba(25, 37, 36, 0.04)',
-        floating: '0 20px 40px rgba(25, 37, 36, 0.12), 0 8px 16px rgba(25, 37, 36, 0.06)',
+        subtle: '0 2px 10px rgba(7, 94, 84, 0.05), 0 1px 2px rgba(7, 94, 84, 0.03)',
+        elevation: '0 10px 30px rgba(7, 94, 84, 0.10), 0 4px 12px rgba(7, 94, 84, 0.05)',
+        floating: '0 20px 40px rgba(7, 94, 84, 0.14), 0 8px 16px rgba(7, 94, 84, 0.08)',
+        glow: '0 8px 30px rgba(37, 211, 102, 0.35)',
       },
       transitionTimingFunction: {
         apple: 'cubic-bezier(0.42, 0, 0.58, 1)',

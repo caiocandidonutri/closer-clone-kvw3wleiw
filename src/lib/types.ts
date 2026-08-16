@@ -50,3 +50,62 @@ export interface WhatsAppMessage {
   timestamp: string
   raw: any
 }
+
+export interface YasaAgentConfig {
+  id: string
+  owner: string
+  agent_name: string
+  nutritionist_name: string
+  specialty: string
+  welcome_message: string
+  tone: 'leve' | 'formal'
+  detail_level: 'curto' | 'detalhado'
+  preferred_topics: string[]
+  general_guidelines: string
+  is_active: boolean
+  gemini_api_key: string
+  gemini_model: 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gemini-2.0-flash'
+  temperature: number
+  max_response_seconds: number
+  created: string
+  updated: string
+}
+
+export interface AgentMaterial {
+  id: string
+  owner: string
+  title: string
+  description: string
+  topic: string
+  file: string
+  content_text: string
+  is_active: boolean
+  created: string
+  updated: string
+}
+
+export interface MealPlanTemplate {
+  id: string
+  owner: string
+  title: string
+  description: string
+  topic: string
+  file: string
+  content_text: string
+  is_active: boolean
+  created: string
+  updated: string
+}
+
+export interface YasaFeedback {
+  id: string
+  owner: string
+  message: string
+  contact: string
+  rating: 'useful' | 'not_useful'
+  comment: string
+  question_text: string
+  answer_text: string
+  created: string
+  updated: string
+}

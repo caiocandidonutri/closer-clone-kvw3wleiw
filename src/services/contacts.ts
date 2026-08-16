@@ -9,6 +9,8 @@ export interface Contact {
   last_message: string
   wait_time_seconds: number
   metadata: Record<string, unknown> | null
+  meal_plan_photo: string
+  meal_plan_summary: string
   owner: string
   created: string
   updated: string
