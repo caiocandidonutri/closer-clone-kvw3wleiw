@@ -13,8 +13,13 @@ export interface CreateRecipeInput {
 }
 
 export const createRecipe = async (input: CreateRecipeInput): Promise<Recipe> => {
+  const ownerId = pb.authStore.model?.id
+  if (!ownerId) {
+    throw new Error('Usuário não autenticado')
+  }
   const formData = new FormData()
   formData.append('title', input.title)
+  formData.append('owner', ownerId)
   if (input.description) formData.append('description', input.description)
   if (input.content_text) formData.append('content_text', input.content_text)
   formData.append('is_active', input.is_active === false ? 'false' : 'true')
