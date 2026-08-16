@@ -246,7 +246,7 @@ const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<'div'> &
     Pick<RechartsPrimitive.LegendProps, 'verticalAlign'> & {
-      payload?: RechartsPrimitive.LegendPayload[]
+      payload?: Array<Record<string, unknown>>
       hideIcon?: boolean
       nameKey?: string
     }
@@ -266,13 +266,13 @@ const ChartLegendContent = React.forwardRef<
         className,
       )}
     >
-      {payload.map((item) => {
+      {payload.map((item: any, index: number) => {
         const key = `${nameKey || item.dataKey || 'value'}`
         const itemConfig = getPayloadConfigFromPayload(config, item, key)
 
         return (
           <div
-            key={item.value}
+            key={`${item.value ?? index}`}
             className={cn(
               'flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground font-medium',
             )}
@@ -283,7 +283,7 @@ const ChartLegendContent = React.forwardRef<
               <div
                 className="h-2 w-2 shrink-0 rounded-[2px]"
                 style={{
-                  backgroundColor: item.color,
+                  backgroundColor: item.color as React.CSSProperties['backgroundColor'],
                 }}
               />
             )}

@@ -64,3 +64,16 @@ export const sendMessage = async (
     method: 'POST',
     body: { contactId, text, integrationId },
   })
+
+export interface SyncResult {
+  success: boolean
+  imported_contacts: number
+  imported_messages: number
+}
+
+/** Import existing WhatsApp conversations from the connected Evolution instance. */
+export const syncWhatsapp = async (integrationId?: string): Promise<SyncResult> =>
+  await pb.send('/backend/v1/whatsapp/sync', {
+    method: 'POST',
+    body: { integrationId },
+  })

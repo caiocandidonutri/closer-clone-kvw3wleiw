@@ -189,6 +189,13 @@ export const translations = {
     no_contacts_desc_filtered: 'Nenhum contato classificado como {tab}.',
     unknown: 'Desconhecido',
 
+    sync_whatsapp: 'Importar conversas',
+    sync_whatsapp_desc: 'Baixa contatos e histórico de mensagens da instância conectada.',
+    sync_whatsapp_running: 'Importando conversas...',
+    sync_whatsapp_success: '{contacts} contatos e {messages} mensagens importados!',
+    sync_whatsapp_empty: 'Nenhuma conversa nova encontrada.',
+    sync_whatsapp_failed: 'Falha ao importar conversas. Verifique a conexão.',
+
     settings: 'Configurações',
     settings_desc: 'Gerencie suas conexões e a instância do WhatsApp.',
     whatsapp_connection: 'Conexão do WhatsApp',
@@ -649,6 +656,13 @@ export const translations = {
     no_contacts_desc_filtered: 'Nenhum contato classificado como {tab}.',
     unknown: 'Desconhecido',
 
+    sync_whatsapp: 'Importar conversas',
+    sync_whatsapp_desc: 'Baixa contatos e histórico de mensagens da instância conectada.',
+    sync_whatsapp_running: 'Importando conversas...',
+    sync_whatsapp_success: '{contacts} contatos e {messages} mensagens importados!',
+    sync_whatsapp_empty: 'Nenhuma conversa nova encontrada.',
+    sync_whatsapp_failed: 'Falha ao importar conversas. Verifique a conexão.',
+
     settings: 'Configurações',
     settings_desc: 'Gerencie suas conexões e a instância do WhatsApp.',
     whatsapp_connection: 'Conexão do WhatsApp',
@@ -768,7 +782,7 @@ export const translations = {
     yasa_section_title: 'Yasa AI — Assistente Nutricional',
     yasa_section_desc: 'Configure o agente de IA que atende seus pacientes no WhatsApp.',
     yasa_agent_name: 'Nome do agente',
-    yasa_nutritionist: 'Nutricionista responsável',
+    yasa_nutritionista: 'Nutricionista responsável',
     yasa_specialty: 'Especialidade',
     yasa_welcome: 'Mensagem de boas-vindas',
     yasa_tone: 'Tom de voz',

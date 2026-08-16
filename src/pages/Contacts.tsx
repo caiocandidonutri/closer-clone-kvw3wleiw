@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react'
 import { useContacts } from '@/hooks/use-contacts'
 import { useLanguage } from '@/hooks/use-language'
+import { useIntegration } from '@/hooks/use-integration'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Search, UserRound, Loader2, MessageSquare, Clock } from 'lucide-react'
+import { Search, UserRound, Loader2, MessageSquare, Clock, DownloadCloud } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 const CATEGORIES = [
   { id: 'All', labelKey: 'all' as const },
@@ -23,13 +25,36 @@ export default function Contacts() {
   const dateLocale = ptBR
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState('All')
-  const { contacts, loading } = useContacts(search)
+  const { contacts, loading, refresh: refreshContacts } = useContacts(search)
+  const { syncing, syncWhatsapp, integrations } = useIntegration()
   const navigate = useNavigate()
+
+  const hasConnected = integrations.some((i) => i.status === 'CONNECTED')
 
   const filtered = useMemo(() => {
     if (activeTab === 'All') return contacts
     return contacts.filter((c) => c.status === activeTab)
   }, [contacts, activeTab])
+
+  const handleSync = async () => {
+    const connected = integrations.find((i) => i.status === 'CONNECTED')
+    const res = await syncWhatsapp(connected?.id)
+    if (res && res.success) {
+      if (res.imported_contacts === 0 && res.imported_messages === 0) {
+        toast.info(t('sync_whatsapp_empty'))
+      } else {
+        toast.success(
+          t('sync_whatsapp_success', {
+            contacts: res.imported_contacts,
+            messages: res.imported_messages,
+          }),
+        )
+      }
+    } else {
+      toast.error(t('sync_whatsapp_failed'))
+    }
+    refreshContacts?.()
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 p-6 md:p-12 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple min-h-full bg-background">
@@ -38,14 +63,29 @@ export default function Contacts() {
           <h2 className="text-4xl font-bold tracking-tight text-foreground">{t('contacts')}</h2>
           <p className="text-muted-foreground mt-2 font-medium text-base">{t('manage_network')}</p>
         </div>
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input
-            placeholder={t('search_placeholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-12 h-14 bg-card shadow-sm border-border hover:border-border/80 focus-visible:ring-primary/20 transition-all"
-          />
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              placeholder={t('search_placeholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-12 h-14 bg-card shadow-sm border-border hover:border-border/80 focus-visible:ring-primary/20 transition-all"
+            />
+          </div>
+          <Button
+            onClick={handleSync}
+            disabled={syncing || !hasConnected}
+            className="h-14 px-6 rounded-2xl shadow-subtle shrink-0"
+            title={t('sync_whatsapp_desc')}
+          >
+            {syncing ? (
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            ) : (
+              <DownloadCloud className="h-5 w-5 mr-2" />
+            )}
+            {syncing ? t('sync_whatsapp_running') : t('sync_whatsapp')}
+          </Button>
         </div>
       </div>
 

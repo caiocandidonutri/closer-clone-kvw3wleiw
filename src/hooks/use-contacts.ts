@@ -33,5 +33,5 @@ export const useContacts = (searchQuery: string = '') => {
       )
     : contacts
 
-  return { contacts: filtered, loading }
+  return { contacts: filtered, loading, refresh: load }
 }

@@ -8,7 +8,11 @@ import React, {
 } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from './use-auth'
-import { getIntegrations, Integration } from '@/services/integrations'
+import {
+  getIntegrations,
+  syncWhatsapp as syncWhatsappSvc,
+  Integration,
+} from '@/services/integrations'
 
 export type { Integration }
 import { useRealtime } from '@/hooks/use-realtime'
@@ -18,6 +22,10 @@ interface IntegrationContextType {
   loading: boolean
   addIntegration: (name?: string) => Promise<Integration | null>
   refreshIntegrations: () => Promise<void>
+  syncing: boolean
+  syncWhatsapp: (
+    integrationId?: string,
+  ) => Promise<{ success: boolean; imported_contacts: number; imported_messages: number } | null>
 }
 
 const IntegrationContext = createContext<IntegrationContextType | undefined>(undefined)
@@ -32,6 +40,7 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth()
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
 
   const fetchIntegrations = useCallback(async () => {
     if (!user) {
@@ -70,6 +79,20 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     return rec as unknown as Integration
   }
 
+  const syncWhatsapp = async (integrationId?: string) => {
+    if (!user) return null
+    setSyncing(true)
+    try {
+      const res = await syncWhatsappSvc(integrationId)
+      return res
+    } catch (err) {
+      console.error('[useIntegration] sync error:', err)
+      return null
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return React.createElement(
     IntegrationContext.Provider,
     {
@@ -78,6 +101,8 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
         loading,
         addIntegration,
         refreshIntegrations: fetchIntegrations,
+        syncing,
+        syncWhatsapp,
       },
     },
     children,

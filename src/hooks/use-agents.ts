@@ -46,6 +46,7 @@ export const useAgents = () => {
       description: agent.description ?? null,
       system_prompt: agent.system_prompt!,
       openai_api_key: agent.openai_api_key!,
+      gemini_api_key: agent.gemini_api_key ?? null,
       is_active: agent.is_active ?? false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
