@@ -200,7 +200,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
             >
               <MessageCircle className="h-5 w-5" />
             </div>
-            {integration.name || 'WhatsApp Instance'}
+            {integration.name || t('whatsapp_instance')}
           </CardTitle>
           <CardDescription className="font-medium text-sm text-muted-foreground max-w-sm">
             {integration.instance_name || '—'}
@@ -272,7 +272,7 @@ export function IntegrationCard({ integration, onStatusChange }: IntegrationCard
           {isConnected
             ? t('actively_connected') || 'Actively connected'
             : connectionState === 'idle'
-              ? 'Configure this instance'
+              ? t('configure_instance_short')
               : badge.label}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">

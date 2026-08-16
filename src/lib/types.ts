@@ -64,9 +64,10 @@ export interface YasaAgentConfig {
   general_guidelines: string
   is_active: boolean
   openai_api_key: string
-  gemini_model: 'gpt-4o-mini' | 'gpt-4o'
+  gemini_model: 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo'
   temperature: number
   max_response_seconds: number
+  gemini_api_key?: string
   created: string
   updated: string
 }

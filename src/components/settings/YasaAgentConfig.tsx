@@ -8,11 +8,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Loader2, Save, Sparkles, KeyRound, Thermometer, Clock } from 'lucide-react'
+import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
 
 type Tone = 'leve' | 'formal'
 type Detail = 'curto' | 'detalhado'
-type GeminiModel = 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gemini-2.0-flash'
+type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo'
 
 export function YasaAgentConfig() {
   const { config, loading, saving, save } = useYasaConfig()
@@ -28,8 +29,8 @@ export function YasaAgentConfig() {
     preferred_topics: '',
     general_guidelines: '',
     is_active: true,
-    gemini_api_key: '',
-    gemini_model: 'gemini-1.5-flash' as GeminiModel,
+    openai_api_key: '',
+    gemini_model: 'gpt-4o' as OpenAIModel,
     temperature: 0.7,
     max_response_seconds: 30,
   })
@@ -49,8 +50,8 @@ export function YasaAgentConfig() {
         preferred_topics: topics,
         general_guidelines: config.general_guidelines || '',
         is_active: config.is_active ?? true,
-        gemini_api_key: config.gemini_api_key || '',
-        gemini_model: (config.gemini_model as GeminiModel) || 'gemini-1.5-flash',
+        openai_api_key: config.openai_api_key || '',
+        gemini_model: (config.gemini_model as OpenAIModel) || 'gpt-4o',
         temperature:
           typeof config.temperature === 'number' && config.temperature !== null
             ? config.temperature
@@ -79,7 +80,7 @@ export function YasaAgentConfig() {
       preferred_topics: topics,
       general_guidelines: form.general_guidelines,
       is_active: form.is_active,
-      gemini_api_key: form.gemini_api_key,
+      openai_api_key: form.openai_api_key,
       gemini_model: form.gemini_model,
       temperature: Number(form.temperature),
       max_response_seconds: Number(form.max_response_seconds),
@@ -262,79 +263,61 @@ export function YasaAgentConfig() {
             />
           </div>
 
-          {/* Motor de IA — Gemini */}
+          {/* Provedor de IA — OpenAI */}
           <section className="space-y-5">
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-              {t('yasa_gemini_section')}
+              {t('yasa_openai_section')}
             </h3>
-            {!form.gemini_api_key && (
+            {!form.openai_api_key && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
                 <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{t('yasa_gemini_key_missing')}</span>
+                <span>{t('yasa_openai_key_missing')}</span>
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="gemini_key" className="font-semibold">
-                {t('yasa_gemini_key')}
+              <Label htmlFor="openai_key" className="font-semibold">
+                {t('yasa_openai_key')}
               </Label>
               <Input
-                id="gemini_key"
+                id="openai_key"
                 type="password"
-                value={form.gemini_api_key}
-                onChange={(e) => setForm({ ...form, gemini_api_key: e.target.value })}
-                placeholder="AIza..."
+                value={form.openai_api_key}
+                onChange={(e) => setForm({ ...form, openai_api_key: e.target.value })}
+                placeholder="sk-..."
                 className="rounded-xl h-12 font-mono"
               />
               <p className="text-[11px] text-muted-foreground font-medium">
-                {t('yasa_gemini_key_help')}
+                {t('yasa_openai_key_help')}
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
-                <Label htmlFor="gemini_model" className="font-semibold">
-                  {t('yasa_gemini_model')}
+                <Label htmlFor="openai_model" className="font-semibold">
+                  {t('yasa_openai_model')}
                 </Label>
                 <select
-                  id="gemini_model"
+                  id="openai_model"
                   value={form.gemini_model}
                   onChange={(e) =>
-                    setForm({ ...form, gemini_model: e.target.value as GeminiModel })
+                    setForm({ ...form, gemini_model: e.target.value as OpenAIModel })
                   }
                   className="flex h-12 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (rápido)</option>
-                  <option value="gemini-1.5-pro">Gemini 1.5 Pro (mais capaz)</option>
-                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="gpt-4o">GPT-4o (padrão, leitura de imagem)</option>
+                  <option value="gpt-4o-mini">GPT-4o mini (rápido e econômico)</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo (avançado)</option>
                 </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gemini_temp" className="font-semibold">
-                  <Thermometer className="inline h-3.5 w-3.5 mr-1" />
-                  {t('yasa_gemini_temperature')}
-                </Label>
-                <Input
-                  id="gemini_temp"
-                  type="number"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={form.temperature}
-                  onChange={(e) =>
-                    setForm({ ...form, temperature: parseFloat(e.target.value) || 0 })
-                  }
-                  className="rounded-xl h-12"
-                />
                 <p className="text-[11px] text-muted-foreground font-medium">
-                  {t('yasa_gemini_temperature_help')}
+                  {t('yasa_openai_model_help')}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="gemini_time" className="font-semibold">
+                <Label htmlFor="openai_time" className="font-semibold">
                   <Clock className="inline h-3.5 w-3.5 mr-1" />
-                  {t('yasa_gemini_max_time')}
+                  {t('yasa_openai_max_time')}
                 </Label>
                 <Input
-                  id="gemini_time"
+                  id="openai_time"
                   type="number"
                   min={5}
                   max={120}
@@ -349,9 +332,32 @@ export function YasaAgentConfig() {
                   className="rounded-xl h-12"
                 />
                 <p className="text-[11px] text-muted-foreground font-medium">
-                  {t('yasa_gemini_max_time_help')}
+                  {t('yasa_openai_max_time_help')}
                 </p>
               </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="openai_temp" className="font-semibold">
+                  <Thermometer className="inline h-3.5 w-3.5 mr-1" />
+                  {t('yasa_openai_temperature')}
+                </Label>
+                <span className="text-sm font-bold text-primary tabular-nums">
+                  {form.temperature.toFixed(1)}
+                </span>
+              </div>
+              <Slider
+                id="openai_temp"
+                min={0}
+                max={1}
+                step={0.1}
+                value={[form.temperature]}
+                onValueChange={(vals) => setForm({ ...form, temperature: vals[0] ?? 0.7 })}
+                className="py-2"
+              />
+              <p className="text-[11px] text-muted-foreground font-medium">
+                {t('yasa_openai_temperature_help')}
+              </p>
             </div>
           </section>
         </CardContent>

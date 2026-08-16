@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const CATEGORIES = [
-  { id: 'All', label: 'All' },
-  { id: 'pending', label: 'Pending' },
-  { id: 'responded', label: 'Responded' },
+  { id: 'All', labelKey: 'all' as const },
+  { id: 'pending', labelKey: 'status_pending' as const },
+  { id: 'responded', labelKey: 'status_responded' as const },
 ]
 
 export default function Contacts() {
@@ -36,14 +36,12 @@ export default function Contacts() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h2 className="text-4xl font-bold tracking-tight text-foreground">{t('contacts')}</h2>
-          <p className="text-muted-foreground mt-2 font-medium text-base">
-            {t('manage_network') || 'Manage your network'}
-          </p>
+          <p className="text-muted-foreground mt-2 font-medium text-base">{t('manage_network')}</p>
         </div>
         <div className="relative w-full md:w-96">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
-            placeholder={t('search_placeholder') || 'Search contacts...'}
+            placeholder={t('search_placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-12 h-14 bg-card shadow-sm border-border hover:border-border/80 focus-visible:ring-primary/20 transition-all"
@@ -64,7 +62,7 @@ export default function Contacts() {
                 value={cat.id}
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border-2 border-transparent data-[state=inactive]:bg-card data-[state=inactive]:border-border data-[state=inactive]:text-muted-foreground rounded-full px-5 py-2.5 transition-all duration-300 shadow-subtle"
               >
-                <span className="font-semibold text-[14px]">{cat.label}</span>
+                <span className="font-semibold text-[14px]">{t(cat.labelKey)}</span>
                 <span className="bg-current/10 text-current px-2.5 py-0.5 rounded-full text-[11px] font-bold opacity-90 ml-2">
                   {count}
                 </span>
@@ -85,10 +83,10 @@ export default function Contacts() {
               <UserRound className="h-10 w-10 text-muted-foreground" />
             </div>
             <h3 className="text-2xl font-bold tracking-tight text-foreground">
-              {t('no_contacts_found') || 'No contacts found'}
+              {t('no_contacts_found')}
             </h3>
             <p className="text-muted-foreground max-w-sm mx-auto mt-3 font-medium text-base">
-              {search ? 'Try a different search.' : 'No contacts in this category yet.'}
+              {search ? t('contacts_search_empty') : t('contacts_category_empty')}
             </p>
           </div>
         ) : (
@@ -121,7 +119,7 @@ export default function Contacts() {
 
                 <div className="mb-6 flex-1">
                   <h3 className="font-bold text-xl tracking-tight text-foreground line-clamp-1 mb-1 group-hover:text-primary transition-colors duration-300">
-                    {contact.name || 'Unknown'}
+                    {contact.name || t('unknown')}
                   </h3>
                   <p className="text-sm font-semibold text-muted-foreground truncate">
                     {contact.whatsapp_id}
@@ -139,7 +137,7 @@ export default function Contacts() {
                           : 'bg-green-100/50 text-green-600 border-green-200',
                       )}
                     >
-                      {contact.status === 'pending' ? 'Pending' : 'Responded'}
+                      {contact.status === 'pending' ? t('status_pending') : t('status_responded')}
                     </Badge>
                   </div>
 

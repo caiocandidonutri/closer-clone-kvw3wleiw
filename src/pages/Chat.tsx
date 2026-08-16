@@ -37,6 +37,7 @@ export default function Chat() {
   const [isSending, setIsSending] = useState(false)
   const [isYasaThinking, setIsYasaThinking] = useState(false)
   const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null)
+  const [thankedId, setThankedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
@@ -93,7 +94,11 @@ export default function Chat() {
     setFeedbackBusy(msg.id)
     try {
       await setMessageFeedback(msg.id, rating)
+      setThankedId(msg.id)
       toast.success(t('feedback_thanks'))
+      setTimeout(() => {
+        setThankedId((cur) => (cur === msg.id ? null : cur))
+      }, 2000)
     } catch (err: any) {
       toast.error(err?.message || t('feedback_failed'))
     } finally {
@@ -253,40 +258,67 @@ export default function Chat() {
                         </div>
                       </div>
                       {/* Feedback buttons on Yasa (assistant) messages */}
-                      {msg.role === 'assistant' && (
-                        <div className="flex justify-end items-center gap-1 pr-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={feedbackBusy === msg.id}
-                            onClick={() => handleFeedback(msg, 'useful')}
-                            className={cn(
-                              'h-7 px-2 rounded-full text-[11px] gap-1',
-                              msg.feedback === 'useful'
-                                ? 'text-green-600 bg-green-500/10'
-                                : 'text-muted-foreground hover:text-foreground',
-                            )}
-                          >
-                            <ThumbsUp className="h-3 w-3" />
-                            {t('feedback_useful')}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={feedbackBusy === msg.id}
-                            onClick={() => handleFeedback(msg, 'not_useful')}
-                            className={cn(
-                              'h-7 px-2 rounded-full text-[11px] gap-1',
-                              msg.feedback === 'not_useful'
-                                ? 'text-red-600 bg-red-500/10'
-                                : 'text-muted-foreground hover:text-foreground',
-                            )}
-                          >
-                            <ThumbsDown className="h-3 w-3" />
-                            {t('feedback_not_useful')}
-                          </Button>
-                        </div>
-                      )}
+                      {msg.role === 'assistant' &&
+                        (msg.feedback ? (
+                          thankedId === msg.id ? (
+                            <div className="flex justify-end pr-1">
+                              <span className="text-[11px] font-semibold text-green-600">
+                                {t('feedback_thanks')}
+                              </span>
+                            </div>
+                          ) : msg.feedback === 'useful' ? (
+                            <div className="flex justify-end pr-1">
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-green-600">
+                                <ThumbsUp className="h-3 w-3" /> {t('feedback_useful')}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end pr-1">
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600">
+                                <ThumbsDown className="h-3 w-3" /> {t('feedback_not_useful')}
+                              </span>
+                            </div>
+                          )
+                        ) : thankedId === msg.id ? (
+                          <div className="flex justify-end pr-1">
+                            <span className="text-[11px] font-semibold text-green-600">
+                              {t('feedback_thanks')}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end items-center gap-1 pr-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={feedbackBusy === msg.id}
+                              onClick={() => handleFeedback(msg, 'useful')}
+                              className={cn(
+                                'h-7 px-2 rounded-full text-[11px] gap-1',
+                                msg.feedback === 'useful'
+                                  ? 'text-green-600 bg-green-500/10'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              )}
+                            >
+                              <ThumbsUp className="h-3 w-3" />
+                              {t('feedback_useful')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={feedbackBusy === msg.id}
+                              onClick={() => handleFeedback(msg, 'not_useful')}
+                              className={cn(
+                                'h-7 px-2 rounded-full text-[11px] gap-1',
+                                msg.feedback === 'not_useful'
+                                  ? 'text-red-600 bg-red-500/10'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              )}
+                            >
+                              <ThumbsDown className="h-3 w-3" />
+                              {t('feedback_not_useful')}
+                            </Button>
+                          </div>
+                        ))}
                     </div>
                   )
                 })}
@@ -336,7 +368,7 @@ export default function Chat() {
               variant="secondary"
               size="icon"
               className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl sm:rounded-full shrink-0"
-              title="Perguntar à Yasa"
+              title={t('ask_yasa')}
             >
               {isYasaThinking ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

@@ -107,9 +107,7 @@ export default function Dashboard() {
 
       <div className="pb-8">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold tracking-tight text-foreground">
-            {t('top_leads') || 'Recent Contacts'}
-          </h3>
+          <h3 className="text-2xl font-bold tracking-tight text-foreground">{t('top_leads')}</h3>
           <Button
             variant="ghost"
             size="icon"
@@ -126,7 +124,7 @@ export default function Dashboard() {
           </div>
         ) : contacts.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center font-semibold py-12">
-            {t('no_contacts') || 'No contacts yet'}
+            {t('no_contacts')}
           </div>
         ) : (
           <div className="space-y-2">
@@ -145,7 +143,7 @@ export default function Dashboard() {
                   </Avatar>
                   <div>
                     <p className="font-bold text-[15px] tracking-tight text-foreground group-hover:text-primary transition-colors">
-                      {contact.name || 'Unknown'}
+                      {contact.name || t('unknown')}
                     </p>
                     <p className="text-[13px] text-muted-foreground font-semibold truncate max-w-[260px]">
                       {contact.last_message ||
@@ -166,7 +164,7 @@ export default function Dashboard() {
                       : 'bg-green-100/50 text-green-600 border-green-200 text-[11px] px-2.5 py-0.5'
                   }
                 >
-                  {contact.status === 'pending' ? 'Pending' : 'Responded'}
+                  {contact.status === 'pending' ? t('status_pending') : t('status_responded')}
                 </Badge>
               </div>
             ))}

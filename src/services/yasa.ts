@@ -19,7 +19,7 @@ const DEFAULT_CONFIG: Partial<YasaAgentConfig> = {
     'Atendimento sempre acolhedor, objetivo e seguro. Nunca substituir a consulta. Encaminhar ao Dr. Caio qualquer caso clínico, sintoma ou situação de risco. Usar os materiais (PDFs) como base sempre que o assunto tiver relação.',
   is_active: true,
   gemini_api_key: '',
-  gemini_model: 'gemini-1.5-flash',
+  gemini_model: 'gpt-4o',
   temperature: 0.7,
   max_response_seconds: 30,
 }
