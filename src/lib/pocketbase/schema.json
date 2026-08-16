@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T03:41:47.148Z",
+  "generatedAt": "2026-08-16T03:52:05.979Z",
   "collections": [
     {
       "name": "users",
@@ -668,12 +668,6 @@
           "system": false
         },
         {
-          "name": "file",
-          "type": "file",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "content_text",
           "type": "text",
           "required": false,
@@ -698,6 +692,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_recipes_owner ON recipes (owner)"]
