@@ -1,385 +1,332 @@
-routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
-  const payload = e.requestInfo().body || {}
-  const instanceName = payload.instance
-  const event = payload.event ? payload.event.toLowerCase() : ''
+/// <reference path="../pb_data/types.d.ts" />
+// WhatsApp webhook → OpenAI Yasa reply.
+// Receives incoming WhatsApp messages (text or image of meal plan),
+// resolves the contact + owner, calls the Yasa chat logic via OpenAI
+// gpt-4o, and returns the assistant reply. Stores the inbound user message.
 
-  if (!instanceName) return e.json(200, { success: true })
+routerAdd('POST', '/backend/v1/whatsapp/webhook', (e) => {
+  const body = e.requestInfo().body || {}
+  const phone = (body.phone || body.From || '').toString().replace(/\D/g, '')
+  if (!phone) return e.badRequestError('phone obrigatório')
 
-  let integ
+  // Body may carry the raw text and/or a media URL/base64 for meal-plan photos.
+  const text = (body.message || body.Body || '').toString().trim()
+  const imageUrl = (body.image_url || body.MediaUrl0 || '').toString()
+  const imageBase64 = (body.image_base64 || '').toString()
+  const imageMime = (body.image_mime || 'image/jpeg').toString()
+
+  if (!text && !imageUrl && !imageBase64) return e.badRequestError('mensagem ou imagem obrigatória')
+
+  // ── Resolve contact by phone ──
+  let contact = null
   try {
-    integ = $app.findFirstRecordByData('integrations', 'instance_name', instanceName)
-  } catch (_) {
-    return e.json(200, { success: true })
-  }
-  const ownerId = integ.getString('owner')
-
-  if (event === 'connection.update') {
-    const state = payload.data && payload.data.state
-    if (state === 'open') integ.set('status', 'CONNECTED')
-    else if (state === 'close') integ.set('status', 'DISCONNECTED')
-    $app.save(integ)
-    return e.json(200, { success: true })
+    contact = $app.findFirstRecordByData('contacts', 'phone', phone)
+  } catch (_) {}
+  if (!contact) {
+    return e.json(404, { error: 'Contato não encontrado para este número.' })
   }
 
-  if (event === 'messages.upsert') {
-    let msgObj = payload.data
-    if (Array.isArray(msgObj)) msgObj = msgObj[0]
-    else if (msgObj && Array.isArray(msgObj.messages)) msgObj = msgObj.messages[0]
-    if (!msgObj) return e.json(200, { success: true })
+  const owner = contact.getString('owner')
+  if (!owner) return e.json(403, { error: 'Contato sem profissional responsável.' })
 
-    const key = msgObj.key || {}
-    const remoteJid = key.remoteJid || msgObj.remoteJid || ''
-    const fromMe = key.fromMe !== undefined ? key.fromMe : msgObj.fromMe || false
-
-    if (!remoteJid || remoteJid === 'status@broadcast' || remoteJid.indexOf('@g.us') >= 0) {
-      return e.json(200, { success: true })
-    }
-
-    const pushName = msgObj.pushName || msgObj.verifiedName || 'Paciente'
-    let text = ''
-    const content = msgObj.message
-    let imageBase64 = ''
-    let imageMime = 'image/jpeg'
-    if (typeof content === 'string') {
-      text = content
-    } else if (content && typeof content === 'object') {
-      text =
-        content.conversation ||
-        (content.extendedTextMessage && content.extendedTextMessage.text) ||
-        (content.imageMessage && content.imageMessage.caption) ||
-        (content.videoMessage && content.videoMessage.caption) ||
-        ''
-      // Capture WhatsApp image bytes for Gemini vision analysis.
-      if (content.imageMessage && content.imageMessage.jpegThumbnail) {
-        imageBase64 = content.imageMessage.jpegThumbnail
-        imageMime = 'image/jpeg'
-      }
-    } else if (msgObj.text) {
-      text = msgObj.text
-    }
-    if (!text) text = '[Mídia]'
-    // Treat a received photo as a possible meal plan photo.
-    if (imageBase64 && !text) text = 'O paciente enviou uma foto.'
-
-    const ts = msgObj.messageTimestamp || msgObj.timestamp
-    let timestamp = new Date().toISOString()
-    if (ts) {
-      const numTs = typeof ts === 'string' ? parseInt(ts, 10) : ts
-      if (numTs > 0) timestamp = new Date(numTs < 100000000000 ? numTs * 1000 : numTs).toISOString()
-    }
-
-    let contact
+  // ── Resolve OpenAI key (per-user config → shared secret) ──
+  const apiKey = (() => {
     try {
-      contact = $app.findFirstRecordByData('contacts', 'whatsapp_id', remoteJid)
-    } catch (_) {
-      const col = $app.findCollectionByNameOrId('contacts')
-      contact = new Record(col)
-      contact.set('name', pushName)
-      contact.set('whatsapp_id', remoteJid)
-      contact.set('status', 'pending')
-      contact.set('owner', ownerId)
-      contact.set('last_message', text)
-      contact.set('wait_time_seconds', 0)
-      $app.save(contact)
+      const cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', owner)
+      const k = cfg.getString('openai_api_key')
+      if (k) return k
+    } catch (_) {}
+    return $os.getenv('OPENAI_API_KEY') || $secrets.get('OPENAI_API_KEY') || ''
+  })()
+  if (!apiKey) {
+    return e.json(503, {
+      error:
+        'Chave da API da OpenAI não configurada. Adicione OPENAI_API_KEY nos secrets ou nas Configurações do agente Yasa.',
+      needs_config: true,
+    })
+  }
+
+  // ── Resolve runtime config ──
+  let cfg = null
+  try {
+    cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', owner)
+  } catch (_) {}
+  const model = (cfg && cfg.getString('gemini_model')) || 'gpt-4o-mini'
+  let temperature = cfg && cfg.get('temperature')
+  if (temperature === null || temperature === '' || typeof temperature !== 'number')
+    temperature = 0.7
+  let maxSeconds = cfg && cfg.get('max_response_seconds')
+  if (!maxSeconds) maxSeconds = 30
+
+  // ── Build system prompt (same as yasa_chat.js) ──
+  const systemPrompt = (() => {
+    const base =
+      'Você é Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
+      '═══ IDENTIDADE ═══\n' +
+      'Nome: Yasa (Assistente Nutrição Dr. Caio).\n' +
+      'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação, refeições, lanches, receitas e trocas no plano alimentar.\n' +
+      'Especialidade: nutrição clínica, dietética, gastronomia, alergias e intolerâncias alimentares, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, questões hormonais).\n' +
+      'Tom: profissional, acolhedor, informal leve — próximo e humano.\n\n' +
+      '═══ FLUXO DE RESPOSTA ═══\n' +
+      '1. Cumprimente o paciente pelo nome.\n' +
+      '2. Apresente-se como assistente nutricional do Dr. Caio.\n' +
+      '3. SEMPRE pergunte se o paciente tem foto do plano alimentar para anexar.\n' +
+      '4. Se o paciente enviar foto do plano, leia e entenda: calorias, porções, cuidados, alimentos prescritos.\n' +
+      '5. Responda de forma prática, em passos simples.\n' +
+      '6. Ao final, pergunte se há mais dúvidas.\n\n' +
+      '═══ ÁREAS DE CONHECIMENTO ═══\n' +
+      '- Nutrição clínica e dietética\n' +
+      '- Gastronomia (receitas, preparos, substituições culinárias)\n' +
+      '- Alergias e intolerâncias alimentares\n' +
+      '- Diabetes, colesterol, hipertensão\n' +
+      '- Saúde feminina: endometriose, menopausa, lipedema, questões hormonais\n\n' +
+      '═══ REGRAS DE SEGURANÇA ═══\n' +
+      '- NUNCA diagnosticar doenças.\n' +
+      '- NUNCA prescrever medicamentos ou suplementos como tratamento.\n' +
+      '- NUNCA prometer resultados (emagrecimento, ganho de massa).\n' +
+      '- Fora do escopo de nutrição → encaminhe ao Dr. Caio.\n' +
+      '- Casos clínicos graves → sinalize que precisa de avaliação humana do Dr. Caio.\n' +
+      '- Em caso de dúvida sobre os limites, prefira encaminhar ao Dr. Caio.\n\n' +
+      'Regra final: é um apoio ao atendimento do Dr. Caio Cândido. Responda SEMPRE em português do Brasil.'
+
+    let extra = ''
+    if (cfg) {
+      const tone = cfg.getString('tone') || 'leve'
+      const detail = cfg.getString('detail_level') || 'detalhado'
+      extra +=
+        '\n\n═══ CONFIGURAÇÃO DO PROFISSIONAL ═══\n' +
+        'Nome do agente: ' +
+        (cfg.getString('agent_name') || 'Yasa') +
+        '\n' +
+        'Nutricionista responsável: ' +
+        (cfg.getString('nutritionist_name') || 'Dr. Caio Cândido') +
+        '\n' +
+        'Especialidade: ' +
+        (cfg.getString('specialty') || 'Nutrição clínica e alimentação saudável') +
+        '\n' +
+        'Tom: ' +
+        (tone === 'formal' ? 'mais formal' : 'leve/informal leve') +
+        '\n' +
+        'Nível de detalhe: ' +
+        (detail === 'curto'
+          ? 'respostas curtas e diretas'
+          : 'respostas detalhadas, organizadas em passos quando útil') +
+        '\n'
+      const guide = cfg.getString('general_guidelines')
+      if (guide) extra += 'Orientações gerais fixas do nutricionista: ' + guide + '\n'
+      const welcome = cfg.getString('welcome_message')
+      if (welcome)
+        extra += 'Mensagem de boas-vindas (use ao iniciar uma conversa): ' + welcome + '\n'
     }
 
+    // Active materials
+    let mats = []
+    try {
+      mats = $app.findRecordsByFilter('agent_materials', 'owner = {:uid}', '-created', 50, 0, {
+        uid: owner,
+      })
+    } catch (_) {}
+    const activeMats = []
+    for (const m of mats) {
+      if (m.getBool('is_active') === false) continue
+      const ct = m.getString('content_text')
+      if (!ct) continue
+      activeMats.push('— Material: ' + m.getString('title') + '\n' + ct)
+    }
+    if (activeMats.length > 0) {
+      extra +=
+        '\n═══ MATERIAIS (PDFs) DISPONÍVEIS ═══\n' +
+        'Use o conteúdo abaixo como base quando o assunto da conversa tiver relação.\n' +
+        activeMats.join('\n\n')
+    }
+
+    // Active meal plan templates
+    let tpls = []
+    try {
+      tpls = $app.findRecordsByFilter('meal_plan_templates', 'owner = {:uid}', '-created', 20, 0, {
+        uid: owner,
+      })
+    } catch (_) {}
+    const activeTpls = []
+    for (const tp of tpls) {
+      if (tp.getBool('is_active') === false) continue
+      const ct = tp.getString('content_text')
+      if (!ct) continue
+      activeTpls.push('— Modelo de plano: ' + tp.getString('title') + '\n' + ct)
+    }
+    if (activeTpls.length > 0) {
+      extra +=
+        '\n═══ MODELOS DE PLANOS ALIMENTARES DO DR. CAIO ═══\n' +
+        'Use os modelos abaixo como referência quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições.\n' +
+        activeTpls.join('\n\n')
+    }
+    return base + extra
+  })()
+
+  // ── Persist inbound user message ──
+  const inboundContent = text || (imageUrl ? '📷 Foto do plano alimentar' : '📷 Foto')
+  let contactId = contact.id
+  try {
     const msgCol = $app.findCollectionByNameOrId('messages')
-    const incoming = new Record(msgCol)
-    incoming.set('contact', contact.id)
-    incoming.set('content', text)
-    incoming.set('role', 'user')
-    incoming.set('timestamp', timestamp)
-    $app.save(incoming)
+    const userMsg = new Record(msgCol)
+    userMsg.set('contact', contactId)
+    userMsg.set('content', inboundContent)
+    userMsg.set('role', 'user')
+    userMsg.set('timestamp', new Date().toISOString())
+    $app.save(userMsg)
+  } catch (_) {}
 
-    if (!fromMe) {
-      const wait = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000))
-      contact.set('status', 'pending')
-      contact.set('last_message', text)
-      contact.set('wait_time_seconds', wait)
-      $app.save(contact)
-
-      try {
-        // Resolve Gemini API key (per-user config, else shared secret).
-        const geminiKey = (() => {
-          try {
-            const cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', ownerId)
-            const k = cfg.getString('gemini_api_key')
-            if (k) return k
-          } catch (_) {}
-          return $os.getenv('GEMINI_API_KEY') || $secrets.get('GEMINI_API_KEY') || ''
-        })()
-        if (!geminiKey) {
-          $app.logger().warn('yasa gemini key missing for owner', 'owner', ownerId)
-        } else {
-          // Build runtime config
-          let cfg = null
-          try {
-            cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', ownerId)
-          } catch (_) {}
-          const model = (cfg && cfg.getString('gemini_model')) || 'gemini-1.5-flash'
-          let temperature = cfg && cfg.get('temperature')
-          if (temperature === null || temperature === '' || typeof temperature !== 'number')
-            temperature = 0.7
-
-          const systemPrompt =
-            'Você é Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
-            '═══ IDENTIDADE ═══\n' +
-            'Nome: Yasa (Assistente Nutrição Dr. Caio).\n' +
-            'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação, refeições, lanches, receitas e trocas no plano alimentar.\n' +
-            'Especialidade: nutrição clínica, dietética, gastronomia, alergias e intolerâncias, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, hormônios).\n' +
-            'Tom: profissional, acolhedor, informal leve — próximo e humano.\n\n' +
-            '═══ FLUXO DE RESPOSTA ═══\n' +
-            '1. Cumprimente o paciente pelo nome.\n' +
-            '2. Apresente-se como assistente nutricional do Dr. Caio.\n' +
-            '3. SEMPRE pergunte se o paciente tem foto do plano alimentar para anexar.\n' +
-            '4. Se o paciente enviar foto do plano, leia e entenda: calorias, porções, cuidados, alimentos prescritos.\n' +
-            '5. Responda de forma prática, em passos simples.\n' +
-            '6. Ao final, pergunte se há mais dúvidas.\n\n' +
-            '═══ REGRAS DE SEGURANÇA ═══\n' +
-            '- NUNCA diagnosticar doenças.\n' +
-            '- NUNCA prescrever medicamentos ou suplementos como tratamento.\n' +
-            '- NUNCA prometer resultados (emagrecimento, ganho de massa).\n' +
-            '- Fora do escopo de nutrição → encaminhe ao Dr. Caio.\n' +
-            '- Casos clínicos graves → sinalize que precisa de avaliação humana do Dr. Caio.\n\n' +
-            'Responda SEMPRE em português do Brasil.'
-
-          let extra = ''
-          if (cfg) {
-            const tone = cfg.getString('tone') || 'leve'
-            const detail = cfg.getString('detail_level') || 'detalhado'
-            extra +=
-              '\n\n═══ CONFIGURAÇÃO DO PROFISSIONAL ═══\n' +
-              'Nome do agente: ' +
-              (cfg.getString('agent_name') || 'Yasa') +
-              '\n' +
-              'Nutricionista responsável: ' +
-              (cfg.getString('nutritionist_name') || 'Dr. Caio Cândido') +
-              '\n' +
-              'Especialidade: ' +
-              (cfg.getString('specialty') || 'Nutrição clínica e alimentação saudável') +
-              '\n' +
-              'Tom: ' +
-              (tone === 'formal' ? 'mais formal' : 'leve/informal leve') +
-              '\n' +
-              'Nível de detalhe: ' +
-              (detail === 'curto'
-                ? 'respostas curtas e diretas'
-                : 'respostas detalhadas, organizadas em passos quando útil') +
-              '\n'
-            let topics = ''
-            try {
-              const arr = cfg.get('preferred_topics')
-              if (Array.isArray(arr) && arr.length > 0) topics = arr.join(', ')
-            } catch (_) {}
-            if (topics) extra += 'Temas preferenciais: ' + topics + '\n'
-            const guide = cfg.getString('general_guidelines')
-            if (guide) extra += 'Orientações fixas: ' + guide + '\n'
-            const welcome = cfg.getString('welcome_message')
-            if (welcome) extra += 'Mensagem de boas-vindas: ' + welcome + '\n'
-          }
-
-          // Active materials
-          let mats = []
-          try {
-            mats = $app.findRecordsByFilter(
-              'agent_materials',
-              'owner = {:uid}',
-              '-created',
-              50,
-              0,
-              { uid: ownerId },
-            )
-          } catch (_) {}
-          const activeMats = []
-          for (const m of mats) {
-            if (m.getBool('is_active') === false) continue
-            const ct = m.getString('content_text')
-            if (!ct) continue
-            activeMats.push('— Material: ' + m.getString('title') + '\n' + ct)
-          }
-          if (activeMats.length > 0) {
-            extra += '\n═══ MATERIAIS (PDFs) DISPONÍVEIS ═══\n' + activeMats.join('\n\n')
-          }
-
-          // Active meal plan templates
-          let tpls = []
-          try {
-            tpls = $app.findRecordsByFilter(
-              'meal_plan_templates',
-              'owner = {:uid}',
-              '-created',
-              20,
-              0,
-              { uid: ownerId },
-            )
-          } catch (_) {}
-          const activeTpls = []
-          for (const tp of tpls) {
-            if (tp.getBool('is_active') === false) continue
-            const ct = tp.getString('content_text')
-            if (!ct) continue
-            activeTpls.push('— Modelo de plano: ' + tp.getString('title') + '\n' + ct)
-          }
-          if (activeTpls.length > 0) {
-            extra +=
-              '\n═══ MODELOS DE PLANOS ALIMENTARES DO DR. CAIO ═══\n' + activeTpls.join('\n\n')
-          }
-
-          // Recent conversation history
-          const history = []
-          try {
-            const msgs = $app.findRecordsByFilter(
-              'messages',
-              'contact = {:cid}',
-              '-created',
-              12,
-              0,
-              { cid: contact.id },
-            )
-            const ordered = []
-            for (let i = msgs.length - 1; i >= 0; i--) ordered.push(msgs[i])
-            for (const m of ordered) {
-              const role = m.getString('role')
-              const content = m.getString('content')
-              if (!content) continue
-              if (role === 'user') history.push({ role: 'user', parts: [{ text: content }] })
-              else if (role === 'assistant')
-                history.push({ role: 'model', parts: [{ text: content }] })
-            }
-          } catch (_) {}
-
-          // Build contents (with optional image)
-          const contents = []
-          for (const h of history) contents.push(h)
-          const userParts = []
-          if (imageBase64) {
-            userParts.push({ inline_data: { mime_type: imageMime, data: imageBase64 } })
-          }
-          userParts.push({ text: text })
-          contents.push({ role: 'user', parts: userParts })
-
-          const geminiUrl =
-            'https://generativelanguage.googleapis.com/v1beta/models/' +
-            model +
-            ':generateContent?key=' +
-            geminiKey
-          const payload = {
-            contents: contents,
-            systemInstruction: { parts: [{ text: systemPrompt + extra }] },
-            generationConfig: { temperature: temperature, topP: 0.95, maxOutputTokens: 1024 },
-          }
-
-          const callGemini = (modelName) => {
-            const url =
-              'https://generativelanguage.googleapis.com/v1beta/models/' +
-              modelName +
-              ':generateContent?key=' +
-              geminiKey
-            return $http.send({
-              url: url,
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-              timeout: 30,
-            })
-          }
-
-          let res = null
-          let usedModel = model
-          try {
-            res = callGemini(model)
-          } catch (err) {
-            $app.logger().warn('yasa gemini primary failed', 'err', err.message || String(err))
-            try {
-              res = callGemini('gemini-1.5-flash')
-              usedModel = 'gemini-1.5-flash'
-            } catch (err2) {
-              $app
-                .logger()
-                .error('yasa gemini fallback failed', 'err', err2.message || String(err2))
-            }
-          }
-
-          let reply = ''
-          let needsHuman = false
-          if (res && res.statusCode >= 200 && res.statusCode < 400) {
-            try {
-              const json = res.json
-              const candidates = json && json.candidates ? json.candidates : []
-              if (candidates.length > 0) {
-                const c = candidates[0]
-                if (c.content && c.content.parts) {
-                  for (const p of c.content.parts) {
-                    if (p.text) reply += p.text
-                  }
-                }
-                if (c.finishReason && c.finishReason.indexOf('SAFETY') >= 0) needsHuman = true
-              }
-            } catch (err) {
-              $app.logger().error('yasa gemini parse failed', 'err', err.message || String(err))
-            }
-          } else {
-            $app.logger().error('yasa gemini http error', 'code', res ? res.statusCode : 0)
-          }
-
-          if (!reply) {
-            reply =
-              'Olá! Tive dificuldade para processar sua mensagem agora. Pode repetir, por favor? Se preferir, o Dr. Caio pode te ajudar pessoalmente.'
-            needsHuman = true
-          }
-
-          // Out-of-scope heuristic
-          if (
-            reply.indexOf('Dr. Caio') >= 0 &&
-            (reply.indexOf('encaminhar') >= 0 ||
-              reply.indexOf('encaminh') >= 0 ||
-              reply.indexOf('avaliação') >= 0 ||
-              reply.indexOf('pessoalmente') >= 0)
-          ) {
-            needsHuman = true
-          }
-
-          const aiMsg = new Record(msgCol)
-          aiMsg.set('contact', contact.id)
-          aiMsg.set('content', reply)
-          aiMsg.set('role', 'assistant')
-          aiMsg.set('timestamp', new Date().toISOString())
-          aiMsg.set('needs_human', needsHuman)
-          $app.save(aiMsg)
-
-          // Persist meal plan summary if an image was received
-          if (imageBase64) {
-            try {
-              contact.set(
-                'meal_plan_summary',
-                'Plano alimentar recebido em foto. Veja o resumo na última conversa com a Yasa.',
-              )
-              $app.save(contact)
-            } catch (_) {}
-          }
-
-          contact.set('status', 'responded')
-          contact.set('last_message', reply)
-          contact.set('wait_time_seconds', 0)
-          $app.save(contact)
-
-          let evoUrl = $secrets.get('EVOLUTION_API_URL') || ''
-          if (evoUrl.endsWith('/')) evoUrl = evoUrl.slice(0, -1)
-          const evoKey = $secrets.get('EVOLUTION_API_KEY') || ''
-          const instName = integ.getString('instance_name')
-          $http.send({
-            url: evoUrl + '/message/sendText/' + instName,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: evoKey },
-            body: JSON.stringify({ number: remoteJid, text: reply }),
-            timeout: 30,
-          })
-        }
-      } catch (err) {
-        $app.logger().error('yasa agent failed', 'err', err.message || String(err))
+  // ── Recent conversation history ──
+  const history = (() => {
+    const out = []
+    try {
+      const msgs = $app.findRecordsByFilter('messages', 'contact = {:cid}', '-created', 12, 0, {
+        cid: contactId,
+      })
+      const ordered = []
+      for (let i = msgs.length - 1; i >= 0; i--) ordered.push(msgs[i])
+      for (const m of ordered) {
+        const role = m.getString('role')
+        const content = m.getString('content')
+        if (!content) continue
+        if (role === 'user') out.push({ role: 'user', content: content })
+        else if (role === 'assistant') out.push({ role: 'assistant', content: content })
       }
+    } catch (_) {}
+    return out
+  })()
+
+  // ── Fetch image as base64 if a URL was given ──
+  let finalImageBase64 = imageBase64
+  let finalImageMime = imageMime
+  if (!finalImageBase64 && imageUrl) {
+    try {
+      const r = $http.send({ url: imageUrl, method: 'GET', timeout: 20 })
+      if (r && r.statusCode === 200 && r.body) {
+        finalImageBase64 = $os.base64(r.body) // PocketBase helper, may be undefined
+        if (!finalImageBase64 && typeof Buffer !== 'undefined') {
+          finalImageBase64 = Buffer.from(r.body, 'binary').toString('base64')
+        }
+        const ct = r.headers && r.headers['content-type']
+        if (ct) finalImageMime = ct.split(';')[0]
+      }
+    } catch (_) {}
+  }
+
+  // ── Build OpenAI messages ──
+  const buildMessages = () => {
+    const msgs = [{ role: 'system', content: systemPrompt }]
+    for (const h of history) msgs.push({ role: h.role, content: h.content })
+    if (finalImageBase64) {
+      const cleaned =
+        finalImageBase64.indexOf(',') >= 0
+          ? finalImageBase64.split(',').slice(1).join(',')
+          : finalImageBase64
+      const dataUrl = 'data:' + finalImageMime + ';base64,' + cleaned
+      msgs.push({
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: dataUrl } },
+          { type: 'text', text: text || 'Recebi esta foto do meu plano alimentar. Pode analisar?' },
+        ],
+      })
+    } else {
+      msgs.push({ role: 'user', content: text })
+    }
+    return msgs
+  }
+
+  const callOpenAI = (modelName) => {
+    return $http.send({
+      url: 'https://api.openai.com/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: buildMessages(),
+        temperature: temperature,
+        max_tokens: 1024,
+      }),
+      timeout: maxSeconds,
+    })
+  }
+
+  const startedAt = Date.now()
+  let res = null
+  let usedModel = model
+  try {
+    res = callOpenAI(model)
+  } catch (err) {
+    try {
+      res = callOpenAI('gpt-4o-mini')
+      usedModel = 'gpt-4o-mini'
+    } catch (err2) {
+      return e.json(502, { error: 'Não foi possível obter resposta da IA.' })
     }
   }
 
-  return e.json(200, { success: true })
+  if (!res || !res.statusCode || res.statusCode >= 400) {
+    try {
+      res = callOpenAI('gpt-4o-mini')
+      usedModel = 'gpt-4o-mini'
+    } catch (_) {
+      return e.json(502, { error: 'Não foi possível obter resposta da IA.' })
+    }
+  }
+
+  let content = ''
+  let needsHuman = false
+  try {
+    const json = res.json
+    const choices = json && json.choices ? json.choices : []
+    if (choices.length > 0) {
+      const c = choices[0]
+      if (c.message && c.message.content) content = c.message.content
+    }
+  } catch (_) {}
+
+  if (!content) {
+    content =
+      'Olá! Tive dificuldade para processar sua mensagem agora. Pode repetir, por favor? Se preferir, o Dr. Caio também pode te ajudar pessoalmente.'
+    needsHuman = true
+  }
+  if (
+    content.indexOf('Dr. Caio') >= 0 &&
+    (content.indexOf('encaminhar') >= 0 ||
+      content.indexOf('encaminh') >= 0 ||
+      content.indexOf('avaliação') >= 0 ||
+      content.indexOf('pessoalmente') >= 0)
+  ) {
+    needsHuman = true
+  }
+
+  const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+
+  // ── Persist assistant reply ──
+  try {
+    const msgCol = $app.findCollectionByNameOrId('messages')
+    const aiMsg = new Record(msgCol)
+    aiMsg.set('contact', contactId)
+    aiMsg.set('content', content)
+    aiMsg.set('role', 'assistant')
+    aiMsg.set('timestamp', new Date().toISOString())
+    aiMsg.set('needs_human', needsHuman)
+    aiMsg.set('ai_response_seconds', elapsed)
+    $app.save(aiMsg)
+
+    try {
+      contact.set('last_message', content)
+      contact.set('status', 'responded')
+      $app.save(contact)
+    } catch (_) {}
+  } catch (_) {}
+
+  return e.json(200, {
+    content: content,
+    needs_human: needsHuman,
+    model: usedModel,
+  })
 })

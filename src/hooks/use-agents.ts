@@ -45,7 +45,7 @@ export const useAgents = () => {
       name: agent.name!,
       description: agent.description ?? null,
       system_prompt: agent.system_prompt!,
-      gemini_api_key: agent.gemini_api_key!,
+      openai_api_key: agent.openai_api_key!,
       is_active: agent.is_active ?? false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -53,7 +53,7 @@ export const useAgents = () => {
     const next = [newAgent, ...agents]
     setAgents(next)
     persist(next)
-    toast.success('Agent created successfully')
+    toast.success('Agente criado com sucesso')
     return newAgent
   }
 
@@ -63,7 +63,7 @@ export const useAgents = () => {
     )
     setAgents(next)
     persist(next)
-    toast.success('Agent updated successfully')
+    toast.success('Agente atualizado com sucesso')
     return next.find((a) => a.id === id)
   }
 
@@ -71,7 +71,7 @@ export const useAgents = () => {
     const next = agents.filter((a) => a.id !== id)
     setAgents(next)
     persist(next)
-    toast.success('Agent deleted successfully')
+    toast.success('Agente excluído com sucesso')
   }
 
   const toggleAgentStatus = async (id: string, currentStatus: boolean) => {

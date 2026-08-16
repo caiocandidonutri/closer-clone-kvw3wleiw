@@ -16,7 +16,7 @@ export interface AIAgent {
   name: string
   description: string | null
   system_prompt: string
-  gemini_api_key: string
+  openai_api_key: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -63,8 +63,8 @@ export interface YasaAgentConfig {
   preferred_topics: string[]
   general_guidelines: string
   is_active: boolean
-  gemini_api_key: string
-  gemini_model: 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gemini-2.0-flash'
+  openai_api_key: string
+  gemini_model: 'gpt-4o-mini' | 'gpt-4o'
   temperature: number
   max_response_seconds: number
   created: string

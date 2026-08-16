@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T01:51:14.359Z",
+  "generatedAt": "2026-08-16T02:22:21.900Z",
   "collections": [
     {
       "name": "users",
@@ -391,13 +391,6 @@
           "system": false
         },
         {
-          "name": "gemini_model",
-          "type": "select",
-          "required": false,
-          "system": false,
-          "selectValues": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
-        },
-        {
           "name": "temperature",
           "type": "number",
           "required": false,
@@ -408,6 +401,19 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "openai_api_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gemini_model",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["gpt-4o-mini", "gpt-4o"]
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_ai_agent_configs_owner ON ai_agent_configs (owner)"]

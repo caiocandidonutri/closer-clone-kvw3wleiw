@@ -1,8 +1,8 @@
 /// <reference path="../pb_data/types.d.ts" />
-// Yasa chat endpoint — direct Google Gemini API call (text + vision).
+// Yasa chat endpoint — OpenAI Chat Completions API (text + vision via gpt-4o).
 // Builds the full nutrition system prompt, pulls per-user config + materials +
-// meal plan templates + recent conversation history, then calls Gemini with
-// retry/fallback and a configurable timeout (~30s default).
+// meal plan templates + recent conversation history, then calls OpenAI with
+// a configurable timeout (~30s default). Falls back to gpt-4o-mini on error.
 
 routerAdd(
   'POST',
@@ -14,20 +14,20 @@ routerAdd(
     const message = (body.message || '').trim()
     if (!message) return e.badRequestError('mensagem obrigatória')
 
-    // Gemini API key: per-user config value wins, else the shared secret.
+    // OpenAI API key: per-user config value wins, else the shared secret.
     const apiKey = (() => {
       try {
         const cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', userId)
-        const k = cfg.getString('gemini_api_key')
+        const k = cfg.getString('openai_api_key')
         if (k) return k
       } catch (_) {}
-      return $os.getenv('GEMINI_API_KEY') || $secrets.get('GEMINI_API_KEY') || ''
+      return $os.getenv('OPENAI_API_KEY') || $secrets.get('OPENAI_API_KEY') || ''
     })()
 
     if (!apiKey) {
       return e.json(503, {
         error:
-          'Chave da API do Gemini não configurada. Adicione GEMINI_API_KEY nos secrets ou na tela de Configurações do agente Yasa.',
+          'Chave da API da OpenAI não configurada. Adicione OPENAI_API_KEY nos secrets ou na tela de Configurações do agente Yasa.',
         needs_config: true,
       })
     }
@@ -37,7 +37,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', userId)
     } catch (_) {}
-    const model = (cfg && cfg.getString('gemini_model')) || 'gemini-1.5-flash'
+    const model = (cfg && cfg.getString('gemini_model')) || 'gpt-4o-mini'
     let temperature = cfg && cfg.get('temperature')
     if (temperature === null || temperature === '' || typeof temperature !== 'number')
       temperature = 0.7
@@ -188,76 +188,72 @@ routerAdd(
             const role = m.getString('role')
             const content = m.getString('content')
             if (!content) continue
-            if (role === 'user') out.push({ role: 'user', parts: [{ text: content }] })
-            else if (role === 'assistant') out.push({ role: 'model', parts: [{ text: content }] })
+            if (role === 'user') out.push({ role: 'user', content: content })
+            else if (role === 'assistant') out.push({ role: 'assistant', content: content })
           }
         } catch (_) {}
       }
       return out
     })()
 
-    // ── Optional image (vision): contact meal_plan_photo or base64 inline ──
-    // Body may carry { image_url: "..." } or { image_base64: "data:image/..." }
-    const buildContents = () => {
-      const contents = []
-      for (const h of history) contents.push(h)
-      const userParts = []
-      // Inline base64 image (frontend encodes the file and sends image_base64).
+    // ── Build OpenAI messages array (system + history + user, with optional image) ──
+    const buildMessages = () => {
+      const msgs = [{ role: 'system', content: systemPrompt }]
+      for (const h of history) msgs.push({ role: h.role, content: h.content })
+
       const imgB64 = body.image_base64 || ''
       const imgMime = body.image_mime || 'image/jpeg'
       if (imgB64) {
         const cleaned = imgB64.indexOf(',') >= 0 ? imgB64.split(',').slice(1).join(',') : imgB64
-        userParts.push({ inline_data: { mime_type: imgMime, data: cleaned } })
+        const dataUrl = 'data:' + imgMime + ';base64,' + cleaned
+        // gpt-4o vision: user message with content array (image_url + text)
+        msgs.push({
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: dataUrl } },
+            { type: 'text', text: message },
+          ],
+        })
+      } else {
+        msgs.push({ role: 'user', content: message })
       }
-      userParts.push({ text: message })
-      contents.push({ role: 'user', parts: userParts })
-      return contents
+      return msgs
     }
 
-    const callGemini = (modelName) => {
-      const url =
-        'https://generativelanguage.googleapis.com/v1beta/models/' +
-        modelName +
-        ':generateContent?key=' +
-        apiKey
+    const callOpenAI = (modelName) => {
+      const url = 'https://api.openai.com/v1/chat/completions'
       const payload = {
-        contents: buildContents(),
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          temperature: temperature,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 1024,
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-        ],
+        model: modelName,
+        messages: buildMessages(),
+        temperature: temperature,
+        max_tokens: 1024,
       }
       return $http.send({
         url: url,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
         body: JSON.stringify(payload),
         timeout: maxSeconds,
       })
     }
 
+    const startedAt = Date.now()
     let res = null
     let usedModel = model
     try {
-      res = callGemini(model)
+      res = callOpenAI(model)
     } catch (err) {
       // network/timeout — try fallback model once
-      $app.logger().warn('yasa gemini primary failed', 'err', err.message || String(err))
-      const fallback = model === 'gemini-1.5-pro' ? 'gemini-1.5-flash' : 'gemini-1.5-flash'
+      $app.logger().warn('yasa openai primary failed', 'err', err.message || String(err))
+      const fallback = model === 'gpt-4o' ? 'gpt-4o-mini' : 'gpt-4o-mini'
       try {
-        res = callGemini(fallback)
+        res = callOpenAI(fallback)
         usedModel = fallback
       } catch (err2) {
-        $app.logger().error('yasa gemini fallback failed', 'err', err2.message || String(err2))
+        $app.logger().error('yasa openai fallback failed', 'err', err2.message || String(err2))
         return e.json(502, {
           error: 'Não foi possível obter resposta da IA. Tente novamente em instantes.',
         })
@@ -266,17 +262,17 @@ routerAdd(
 
     if (!res || !res.statusCode || res.statusCode >= 400) {
       const code = res ? res.statusCode : 0
-      let detail = 'Erro na API do Gemini'
+      let detail = 'Erro na API da OpenAI'
       try {
         const j = res.json
         if (j && j.error && j.error.message) detail = j.error.message
       } catch (_) {}
-      $app.logger().error('yasa gemini http error', 'code', code, 'detail', detail)
+      $app.logger().error('yasa openai http error', 'code', code, 'detail', detail)
       // retry once on 5xx with fallback model
-      if (code >= 500 && usedModel !== 'gemini-1.5-flash') {
+      if (code >= 500 && usedModel !== 'gpt-4o-mini') {
         try {
-          res = callGemini('gemini-1.5-flash')
-          usedModel = 'gemini-1.5-flash'
+          res = callOpenAI('gpt-4o-mini')
+          usedModel = 'gpt-4o-mini'
         } catch (_) {}
       }
     }
@@ -284,33 +280,21 @@ routerAdd(
     // Parse response
     let content = ''
     let needsHuman = false
-    let blocked = false
     try {
       const json = res.json
-      const candidates = json && json.candidates ? json.candidates : []
-      if (candidates.length > 0) {
-        const c = candidates[0]
-        if (c.content && c.content.parts) {
-          for (const p of c.content.parts) {
-            if (p.text) content += p.text
-          }
-        }
-        if (c.finishReason && c.finishReason.indexOf('SAFETY') >= 0) blocked = true
-        if (c.finishReason === 'RECITATION') blocked = true
+      const choices = json && json.choices ? json.choices : []
+      if (choices.length > 0) {
+        const c = choices[0]
+        if (c.message && c.message.content) content = c.message.content
       }
     } catch (err) {
-      $app.logger().error('yasa gemini parse failed', 'err', err.message || String(err))
+      $app.logger().error('yasa openai parse failed', 'err', err.message || String(err))
     }
 
     if (!content) {
-      if (blocked) {
-        content =
-          'Olá! Essa pergunta foge um pouco do meu escopo de nutrição. Vou encaminhar sua dúvida ao Dr. Caio para que ele te ajude pessoalmente, ok?'
-        needsHuman = true
-      } else {
-        content =
-          'Olá! Tive dificuldade para processar sua mensagem agora. Pode repetir, por favor? Se preferir, o Dr. Caio também pode te ajudar pessoalmente.'
-      }
+      content =
+        'Olá! Tive dificuldade para processar sua mensagem agora. Pode repetir, por favor? Se preferir, o Dr. Caio também pode te ajudar pessoalmente.'
+      needsHuman = true
     }
 
     // Heuristic: out-of-scope → needs human
@@ -324,6 +308,8 @@ routerAdd(
       needsHuman = true
     }
 
+    const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+
     // ── Persist: store the assistant message + mark needs_human ──
     let savedMessageId = ''
     const contactId = body.contact_id || ''
@@ -336,6 +322,7 @@ routerAdd(
         aiMsg.set('role', 'assistant')
         aiMsg.set('timestamp', new Date().toISOString())
         aiMsg.set('needs_human', needsHuman)
+        aiMsg.set('ai_response_seconds', elapsed)
         $app.save(aiMsg)
         savedMessageId = aiMsg.id
 
