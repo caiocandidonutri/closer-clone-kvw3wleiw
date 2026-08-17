@@ -32,7 +32,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   )
 
   // ── CONNECTION_UPDATE: sync integration status ──
-  if (event === 'CONNECTION_UPDATE' || event === 'connection.update') {
+  if (event === 'CONNECTION.UPDATE' || event === 'connection.update') {
     const state = (data.state || '').toString()
     console.log('[whatsapp_webhook] CONNECTION_UPDATE state=' + state + ' instance=' + instance)
     try {
@@ -56,7 +56,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   }
 
   // ── MESSAGES_UPSERT: incoming/outgoing message ──
-  if (event !== 'MESSAGES_UPSERT' && event !== 'messages.upsert') {
+  if (event !== 'MESSAGES.UPSERT' && event !== 'messages.upsert') {
     console.log('[whatsapp_webhook] skipping unhandled event=' + event)
     return e.json(200, { ok: true, skipped: 'unhandled_event' })
   }
