@@ -1,6 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useLanguage } from '@/hooks/use-language'
-import { LayoutDashboard, Users, Settings as SettingsIcon, Bot, ChefHat } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Users,
+  Settings as SettingsIcon,
+  Bot,
+  ChefHat,
+  MessageCircle,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function BottomNav() {
@@ -9,6 +16,7 @@ export function BottomNav() {
 
   const navItems = [
     { name: t('overview_nav'), path: '/app', icon: LayoutDashboard },
+    { name: t('conversas_nav'), path: '/app/conversas', icon: MessageCircle },
     { name: t('agent_nav'), path: '/app/agent', icon: Bot },
     { name: t('recipes_nav'), path: '/app/recipes', icon: ChefHat },
     { name: t('contacts_nav'), path: '/app/contacts', icon: Users },
@@ -17,7 +25,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 z-40 w-full border-t border-border bg-background/90 backdrop-blur-2xl pb-safe md:hidden">
-      <div className="flex h-20 justify-around items-center px-2">
+      <div className="flex h-[4.5rem] justify-around items-center px-1 overflow-x-auto scrollbar-hide">
         {navItems.map((item) => {
           const isActive =
             location.pathname === item.path ||
@@ -27,17 +35,17 @@ export function BottomNav() {
               key={item.path}
               to={item.path}
               className={cn(
-                'flex flex-col items-center justify-center w-full h-full gap-1.5 text-[11px] font-bold transition-all duration-300',
+                'flex flex-col items-center justify-center shrink-0 px-2.5 gap-1.5 text-[10px] font-bold transition-all duration-300',
                 isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <item.icon
                 className={cn(
-                  'h-6 w-6 mb-0.5 transition-colors duration-300',
+                  'h-[22px] w-[22px] mb-0.5 transition-colors duration-300',
                   isActive ? 'text-foreground' : 'text-muted-foreground',
                 )}
               />
-              <span className="truncate max-w-full px-1">{item.name}</span>
+              <span className="truncate max-w-[64px]">{item.name}</span>
             </Link>
           )
         })}

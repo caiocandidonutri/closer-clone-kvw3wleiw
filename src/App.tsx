@@ -11,6 +11,7 @@ import Index from './pages/Index'
 import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
+import Conversas from './pages/Conversas'
 import Settings from './pages/Settings'
 import Chat from './pages/Chat'
 import Onboarding from './pages/Onboarding'
@@ -50,6 +51,8 @@ const App = () => (
                 <Route index element={<Dashboard />} />
                 <Route path="onboarding" element={<Onboarding />} />
                 <Route path="contacts" element={<Contacts />} />
+                <Route path="conversas" element={<Conversas />} />
+                <Route path="conversas/:id" element={<Conversas />} />
                 <Route path="chat/:id" element={<Chat />} />
                 <Route path="agent" element={<YasaAgent />} />
                 <Route path="recipes" element={<Recipes />} />

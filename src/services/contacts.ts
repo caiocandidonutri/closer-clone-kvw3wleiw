@@ -29,6 +29,10 @@ export interface Contact {
 export const getContacts = async (): Promise<Contact[]> =>
   await pb.collection('contacts').getFullList({ sort: '-created' })
 
+/** Contatos ordenados pela última mensagem (mais recente primeiro) — para o espelho do WhatsApp Web. */
+export const getConversations = async (): Promise<Contact[]> =>
+  await pb.collection('contacts').getFullList({ sort: '-last_message_at,-updated,-created' })
+
 export const getContact = async (id: string): Promise<Contact> =>
   await pb.collection('contacts').getOne(id)
 

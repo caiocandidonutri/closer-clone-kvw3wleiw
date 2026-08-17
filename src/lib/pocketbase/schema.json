@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T04:05:52.262Z",
+  "generatedAt": "2026-08-17T16:37:48.677Z",
   "collections": [
     {
       "name": "users",
@@ -212,12 +212,68 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "remote_jid",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "push_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "profile_picture_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "classification",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "score",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_message_from_me",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pipeline_stage",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_message_at",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_contacts_whatsapp_id ON contacts (whatsapp_id)",
         "CREATE INDEX idx_contacts_status ON contacts (status)",
-        "CREATE INDEX idx_contacts_owner ON contacts (owner)"
+        "CREATE INDEX idx_contacts_owner ON contacts (owner)",
+        "CREATE INDEX `idx_contacts_remote_jid` ON `contacts` (remote_jid)",
+        "CREATE INDEX `idx_contacts_last_message_at` ON `contacts` (last_message_at)"
       ]
     },
     {

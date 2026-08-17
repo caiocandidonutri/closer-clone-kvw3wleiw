@@ -7,6 +7,7 @@ import {
   Stethoscope,
   Bot,
   ChefHat,
+  MessageCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,7 @@ export function Sidebar() {
 
   const navItems = [
     { name: t('overview_nav'), path: '/app', icon: LayoutDashboard },
+    { name: t('conversas_nav'), path: '/app/conversas', icon: MessageCircle },
     { name: t('agent_nav'), path: '/app/agent', icon: Bot },
     { name: t('recipes_nav'), path: '/app/recipes', icon: ChefHat },
     { name: t('contacts_nav'), path: '/app/contacts', icon: Users },
