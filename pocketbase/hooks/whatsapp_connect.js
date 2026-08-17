@@ -62,7 +62,9 @@ routerAdd(
         (stateRes.body || '').toString().slice(0, 500),
     )
 
+    var instanceExisted = false
     if (stateRes.statusCode === 200) {
+      instanceExisted = true
       let stateData = {}
       try {
         stateData = stateRes.json || {}
@@ -75,76 +77,85 @@ routerAdd(
         console.log('[whatsapp_connect] already CONNECTED — returning early')
         return e.json(200, { status: 'CONNECTED', base64: null })
       }
+      console.log(
+        '[whatsapp_connect] instance exists (state=' +
+          (st || '(unknown)') +
+          ') — skipping create, going straight to webhook/connect',
+      )
     }
 
     // 2. Create instance (409 = already exists, which is fine)
-    const createRes = $http.send({
-      url: evoUrl + '/instance/create',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: evoKey },
-      body: JSON.stringify({
-        instanceName: instanceName,
-        token: instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-      }),
-      timeout: 30,
-    })
+    //    Only run if the instance does NOT already exist (connectionState was not 200).
+    var createRes = null
+    if (!instanceExisted) {
+      createRes = $http.send({
+        url: evoUrl + '/instance/create',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: evoKey },
+        body: JSON.stringify({
+          instanceName: instanceName,
+          token: instanceName,
+          qrcode: true,
+          integration: 'WHATSAPP-BAILEYS',
+        }),
+        timeout: 30,
+      })
 
-    console.log(
-      '[whatsapp_connect] create status=' +
-        createRes.statusCode +
-        ' body=' +
-        (createRes.body || '').toString().slice(0, 500),
-    )
+      console.log(
+        '[whatsapp_connect] create status=' +
+          createRes.statusCode +
+          ' body=' +
+          (createRes.body || '').toString().slice(0, 500),
+      )
 
-    if (createRes.statusCode === 401 || createRes.statusCode === 403) {
-      console.log('[whatsapp_connect] auth failed (401/403) — API key rejected by Evolution')
-      return e.json(500, { error: 'Evolution API authentication failed. Check API key.' })
-    }
+      if (createRes.statusCode === 401 || createRes.statusCode === 403) {
+        console.log('[whatsapp_connect] auth failed (401/403) — API key rejected by Evolution')
+        return e.json(500, { error: 'Evolution API authentication failed. Check API key.' })
+      }
 
-    if (createRes.statusCode >= 400 && createRes.statusCode !== 409) {
-      let createErr = 'Failed to create WhatsApp instance'
-      try {
-        var errJson = createRes.json
-        if (errJson && (errJson.message || errJson.error)) {
-          createErr = errJson.message || errJson.error
+      if (createRes.statusCode >= 400 && createRes.statusCode !== 409) {
+        let createErr = 'Failed to create WhatsApp instance'
+        try {
+          var errJson = createRes.json
+          if (errJson && (errJson.message || errJson.error)) {
+            createErr = errJson.message || errJson.error
+          }
+        } catch (_) {}
+        console.log('[whatsapp_connect] create failed err=' + createErr)
+        return e.json(200, { status: 'ERROR', base64: null, error: createErr })
+      }
+
+      // 3. If create returned QR directly, set webhook and return QR
+      if (createRes.statusCode === 200 || createRes.statusCode === 201) {
+        let createData = {}
+        try {
+          createData = createRes.json || {}
+        } catch (_) {}
+        if (createData.qrcode && createData.qrcode.base64) {
+          const setWbRes = $http.send({
+            url: evoUrl + '/webhook/set/' + instanceName,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: evoKey },
+            body: JSON.stringify({
+              webhook: {
+                enabled: true,
+                url: webhookUrl,
+                events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+              },
+            }),
+            timeout: 20,
+          })
+          console.log(
+            '[whatsapp_connect] webhook/set (after create) status=' +
+              setWbRes.statusCode +
+              ' body=' +
+              (setWbRes.body || '').toString().slice(0, 300),
+          )
+          integ.set('webhook_url', webhookUrl)
+          integ.set('status', 'WAITING_QR')
+          $app.save(integ)
+          return e.json(200, { status: 'WAITING_QR', base64: createData.qrcode.base64 })
         }
-      } catch (_) {}
-      console.log('[whatsapp_connect] create failed err=' + createErr)
-      return e.json(200, { status: 'ERROR', base64: null, error: createErr })
-    }
-
-    // 3. If create returned QR directly, set webhook and return QR
-    if (createRes.statusCode === 200 || createRes.statusCode === 201) {
-      let createData = {}
-      try {
-        createData = createRes.json || {}
-      } catch (_) {}
-      if (createData.qrcode && createData.qrcode.base64) {
-        const setWbRes = $http.send({
-          url: evoUrl + '/webhook/set/' + instanceName,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: evoKey },
-          body: JSON.stringify({
-            webhook: {
-              enabled: true,
-              url: webhookUrl,
-              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
-            },
-          }),
-          timeout: 20,
-        })
-        console.log(
-          '[whatsapp_connect] webhook/set (after create) status=' +
-            setWbRes.statusCode +
-            ' body=' +
-            (setWbRes.body || '').toString().slice(0, 300),
-        )
-        integ.set('webhook_url', webhookUrl)
-        integ.set('status', 'WAITING_QR')
-        $app.save(integ)
-        return e.json(200, { status: 'WAITING_QR', base64: createData.qrcode.base64 })
       }
     }
 
