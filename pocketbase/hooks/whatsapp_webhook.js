@@ -1,18 +1,14 @@
 /// <reference path="../pb_data/types.d.ts" />
-// Evolution API v2 webhook receiver.
+// Evolution API v2 webhook receiver — multimodal Yasa.
 //
-// Evolution posts two kinds of events here (configured in whatsapp_connect.js):
-//   - MESSAGES_UPSERT   → a message was received or sent
-//   - CONNECTION_UPDATE → instance connected/disconnected
-//
-// For every inbound (fromMe=false) text message we:
-//   1. upsert the contact (remoteJid + pushName + profile pic)
-//   2. persist the inbound user message
-//   3. call Yasa (OpenAI gpt-4o) with the full nutrition prompt + history
-//   4. persist the assistant reply
-//   5. send the reply back to the contact through Evolution sendText
-// All realtime happens for free: PocketBase fires record events on save and
-// the frontend useRealtime('contacts' | 'messages') picks them up.
+// Handles inbound WhatsApp messages of every kind:
+//   - text          → normal chat
+//   - audio         → transcribe via OpenAI Whisper, then chat on the transcript
+//   - image         → download, base64, send to GPT-4o vision
+//   - document(PDF) → extract text (best-effort) and feed to the chat
+// Before answering, Yasa consults the local knowledge base
+// (recipes / meal_plan_templates / agent_materials) and may send back
+// images or PDFs from that library through Evolution sendMedia.
 
 routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const raw = e.requestInfo().body
@@ -77,6 +73,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     if (m.extendedTextMessage && m.extendedTextMessage.text) return m.extendedTextMessage.text
     if (m.imageMessage && m.imageMessage.caption) return m.imageMessage.caption
     if (m.videoMessage && m.videoMessage.caption) return m.videoMessage.caption
+    if (m.documentMessage && m.documentMessage.caption) return m.documentMessage.caption
     if (m.buttonsResponseMessage && m.buttonsResponseMessage.selectedButtonId)
       return m.buttonsResponseMessage.selectedButtonId
     if (m.templateMessage) return ''
@@ -84,10 +81,31 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   }
   const text = extractText(message).trim()
 
-  // Ignore status broadcasts, empty messages, and our own outgoing echoes.
+  // Ignore status broadcasts and our own outgoing echoes.
   if (!remoteJid) return e.json(200, { ok: true, skipped: 'no_remote_jid' })
   if (remoteJid.indexOf('status@') === 0 || remoteJid.indexOf('broadcast@') === 0)
     return e.json(200, { ok: true, skipped: 'broadcast' })
+
+  // Detect media kinds.
+  const isAudio =
+    messageType === 'audioMessage' ||
+    messageType === 'audio' ||
+    (message && message.audioMessage ? true : false)
+  const isImage =
+    messageType === 'imageMessage' ||
+    messageType === 'image' ||
+    (message && message.imageMessage ? true : false)
+  const isDocument =
+    messageType === 'documentMessage' ||
+    messageType === 'document' ||
+    (message && message.documentMessage ? true : false)
+  let isPdf = false
+  if (isDocument && message.documentMessage) {
+    const fn = (message.documentMessage.fileName || '').toString().toLowerCase()
+    const mt = (message.documentMessage.mimetype || '').toString().toLowerCase()
+    if (fn.endsWith('.pdf') || mt === 'application/pdf') isPdf = true
+  }
+
   if (fromMe) {
     // Outgoing message sent from the phone itself — mark contact as responded.
     try {
@@ -95,19 +113,20 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       if (c) {
         c.set('last_message_from_me', true)
         c.set('status', 'responded')
-        c.set('last_message', text || '📷 Mídia')
+        c.set(
+          'last_message',
+          text || (isAudio ? '🎤 Áudio' : isImage ? '📷 Foto' : isDocument ? '📄 Documento' : ''),
+        )
         c.set('last_message_at', new Date().toISOString())
         $app.save(c)
       }
     } catch (_) {}
     return e.json(200, { ok: true, skipped: 'from_me' })
   }
-  // For now only handle text/conversation/extendedText. Media (photos) is logged.
-  const isImage =
-    messageType === 'imageMessage' ||
-    (message && message.imageMessage && message.imageMessage.url) ||
-    (message && message.imageMessage && message.imageMessage.jpegThumbnail)
-  if (!text && !isImage) return e.json(200, { ok: true, skipped: 'no_text' })
+
+  // Only proceed when there is text or a media payload we can handle.
+  if (!text && !isAudio && !isImage && !isDocument)
+    return e.json(200, { ok: true, skipped: 'no_text' })
 
   // ── Resolve the integration (owner) for this instance ──
   let integ = null
@@ -116,13 +135,8 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   } catch (_) {}
   if (!integ) {
     console.log(
-      '[whatsapp_webhook] MESSAGES_UPSERT skipped: no integration for instance=' +
-        instance +
-        ' (try also match by name)',
+      '[whatsapp_webhook] MESSAGES_UPSERT skipped: no integration for instance=' + instance,
     )
-    // Evolution v2 sometimes sends instance as the name object or a different identifier.
-    // As a fallback, try to find any CONNECTED integration owned by... we can't know owner here.
-    // List all integrations and match by instance_name loosely.
     let allIntegs = []
     try {
       allIntegs = $app.findRecordsByFilter(
@@ -152,8 +166,8 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   console.log(
     '[whatsapp_webhook] MESSAGES_UPSERT from=' +
       remoteJid +
-      ' fromMe=' +
-      fromMe +
+      ' type=' +
+      messageType +
       ' text="' +
       (text || '').slice(0, 60) +
       '" owner=' +
@@ -165,9 +179,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const evoKey = $secrets.get('EVOLUTION_API_KEY') || ''
   const instanceName = integ.getString('instance_name')
 
-  // Extract phone number from remoteJid (strip @s.whatsapp.net / @lid).
   const phoneNumber = remoteJid.split('@')[0]
-  // For lid-style jids we cannot reach the user back; keep the jid as the id.
   const isLid = remoteJid.indexOf('@lid') >= 0
 
   // ── Upsert contact ──
@@ -176,7 +188,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     contact = $app.findFirstRecordByData('contacts', 'remote_jid', remoteJid)
   } catch (_) {}
   if (!contact) {
-    // also try matching by whatsapp_id (phone) in case synced before remote_jid existed
     if (!isLid) {
       try {
         contact = $app.findFirstRecordByData('contacts', 'whatsapp_id', phoneNumber)
@@ -206,7 +217,19 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     }
   }
   contact.set('last_message_from_me', false)
-  contact.set('last_message', text || (isImage ? '📷 Foto do plano alimentar' : ''))
+  contact.set(
+    'last_message',
+    text ||
+      (isAudio
+        ? '🎤 Áudio'
+        : isImage
+          ? '📷 Foto'
+          : isPdf
+            ? '📄 PDF'
+            : isDocument
+              ? '📄 Documento'
+              : ''),
+  )
   contact.set('last_message_at', new Date().toISOString())
   if (contact.getString('status') !== 'responded') contact.set('status', 'pending')
   $app.save(contact)
@@ -228,8 +251,8 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
           const j = picRes.json
           picUrl = (j && (j.profilePictureUrl || j.url || (j.data && j.data.url))) || ''
         } catch (_) {
-          const raw = picRes.body.toString().replace(/"/g, '')
-          if (raw.indexOf('http') === 0) picUrl = raw
+          const r = picRes.body.toString().replace(/"/g, '')
+          if (r.indexOf('http') === 0) picUrl = r
         }
         if (picUrl) {
           contact.set('profile_picture_url', picUrl)
@@ -238,24 +261,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         }
       }
     } catch (_) {}
-  }
-
-  // ── Persist the inbound user message ──
-  const inboundContent = text || (isImage ? '📷 Foto do plano alimentar' : '')
-  try {
-    const msgCol = $app.findCollectionByNameOrId('messages')
-    const userMsg = new Record(msgCol)
-    userMsg.set('contact', contactId)
-    userMsg.set('content', inboundContent)
-    userMsg.set('role', 'user')
-    userMsg.set('timestamp', new Date().toISOString())
-    $app.save(userMsg)
-    console.log('[whatsapp_webhook] inbound message saved contactId=' + contactId)
-  } catch (err) {
-    console.log(
-      '[whatsapp_webhook] failed to save inbound message: ' +
-        (err && err.message ? err.message : String(err)),
-    )
   }
 
   // ── Resolve OpenAI key (per-user → shared secret) ──
@@ -283,28 +288,294 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   let maxSeconds = cfg && cfg.get('max_response_seconds')
   if (!maxSeconds) maxSeconds = 30
 
+  // ── Download media (audio/image/document) as base64 from Evolution ──
+  // Returns { base64, mimetype, filename } or null on failure.
+  const downloadMedia = () => {
+    if (!msgId || !evoUrl || !evoKey || !instanceName) return null
+    if (!isAudio && !isImage && !isDocument) return null
+    try {
+      const res = $http.send({
+        url: evoUrl + '/chat/getBase64FromMediaMessage/' + instanceName,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: evoKey },
+        body: JSON.stringify({
+          message: { key: { id: msgId } },
+          convertToMp4: isAudio ? true : false,
+        }),
+        timeout: 40,
+      })
+      if (!res || !res.statusCode || res.statusCode >= 400) {
+        console.log(
+          '[whatsapp_webhook] getBase64 media http=' +
+            (res && res.statusCode) +
+            ' body=' +
+            (res && res.body ? res.body.toString().slice(0, 200) : ''),
+        )
+        return null
+      }
+      const j = res.json || {}
+      const base64 = (j.base64 || (j.data && j.data.base64) || '').toString()
+      if (!base64) return null
+      let mt = ''
+      let fn = ''
+      try {
+        mt = (j.mimetype || (j.data && j.data.mimetype) || '').toString()
+      } catch (_) {}
+      try {
+        fn = (j.fileName || (j.data && j.data.fileName) || '').toString()
+      } catch (_) {}
+      if (!mt && message) {
+        if (isAudio && message.audioMessage) mt = message.audioMessage.mimetype || ''
+        if (isImage && message.imageMessage) mt = message.imageMessage.mimetype || ''
+        if (isDocument && message.documentMessage) mt = message.documentMessage.mimetype || ''
+      }
+      if (!mt) mt = isAudio ? 'audio/mpeg' : isImage ? 'image/jpeg' : 'application/octet-stream'
+      if (!fn) fn = isAudio ? 'audio.mp3' : isImage ? 'image.jpg' : 'document'
+      console.log(
+        '[whatsapp_webhook] media downloaded mime=' +
+          mt +
+          ' filename=' +
+          fn +
+          ' bytes~' +
+          base64.length,
+      )
+      return { base64: base64, mimetype: mt, filename: fn }
+    } catch (err) {
+      console.log(
+        '[whatsapp_webhook] getBase64 media error: ' +
+          (err && err.message ? err.message : String(err)),
+      )
+      return null
+    }
+  }
+
+  // ── Transcribe audio via OpenAI Whisper ──
+  const transcribeAudio = (media) => {
+    if (!media || !media.base64) return ''
+    try {
+      const boundary = '----yasa' + $security.randomString(12)
+      const parts = []
+      parts.push('--' + boundary + '\r\n')
+      parts.push('Content-Disposition: form-data; name="model"\r\n\r\n')
+      parts.push('whisper-1\r\n')
+      parts.push('--' + boundary + '\r\n')
+      parts.push('Content-Disposition: form-data; name="language"\r\n\r\n')
+      parts.push('pt\r\n')
+      parts.push('--' + boundary + '\r\n')
+      const fname = media.filename || 'audio.mp3'
+      parts.push(
+        'Content-Disposition: form-data; name="file"; filename="' +
+          fname +
+          '"\r\nContent-Type: ' +
+          media.mimetype +
+          '\r\n\r\n',
+      )
+      const tail = '\r\n--' + boundary + '--\r\n'
+      // Minimal base64 → binary-string decoder (JSVM has no atob).
+      const atobRaw = (b64) => {
+        // Minimal base64 decoder for ASCII output characters.
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '')
+        let out = ''
+        for (let i = 0; i < clean.length; i += 4) {
+          const c1 = chars.indexOf(clean.charAt(i))
+          const c2 = chars.indexOf(clean.charAt(i + 1))
+          const c3 = chars.indexOf(clean.charAt(i + 2))
+          const c4 = chars.indexOf(clean.charAt(i + 3))
+          out += String.fromCharCode((c1 << 2) | (c2 >> 4))
+          if (c3 !== 64) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2))
+          if (c4 !== 64) out += String.fromCharCode(((c3 & 3) << 6) | c4)
+        }
+        return out
+      }
+      // Assemble multipart as a single string with binary represented via
+      // escaped chars; $http.send accepts a string body with a multipart
+      // Content-Type as long as the byte values are preserved. Because the
+      // audio bytes may include any value 0-255, we MUST send bytes, not a
+      // JS string. Build a Uint8Array-like via array of byte values.
+      const binStr = atobRaw(media.base64)
+      const headerStr = parts.join('')
+      const bodyBytes = []
+      for (let i = 0; i < headerStr.length; i++) bodyBytes.push(headerStr.charCodeAt(i) & 0xff)
+      for (let i = 0; i < binStr.length; i++) bodyBytes.push(binStr.charCodeAt(i) & 0xff)
+      for (let i = 0; i < tail.length; i++) bodyBytes.push(tail.charCodeAt(i) & 0xff)
+
+      const res = $http.send({
+        url: 'https://api.openai.com/v1/audio/transcriptions',
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + apiKey,
+          'Content-Type': 'multipart/form-data; boundary=' + boundary,
+        },
+        body: bodyBytes,
+        timeout: 60,
+      })
+      if (!res || !res.statusCode || res.statusCode >= 400) {
+        console.log(
+          '[whatsapp_webhook] whisper http=' +
+            (res && res.statusCode) +
+            ' body=' +
+            (res && res.body ? res.body.toString().slice(0, 300) : ''),
+        )
+        return ''
+      }
+      const j = res.json || {}
+      const t = (j.text || '').toString().trim()
+      console.log('[whatsapp_webhook] whisper transcript="' + t.slice(0, 120) + '"')
+      return t
+    } catch (err) {
+      console.log(
+        '[whatsapp_webhook] whisper error: ' + (err && err.message ? err.message : String(err)),
+      )
+      return ''
+    }
+  }
+
+  // ── Process the inbound media (if any) into text or vision input ──
+  let userText = text
+  let visionB64 = ''
+  let visionMime = 'image/jpeg'
+
+  if (isAudio) {
+    const media = downloadMedia()
+    const transcript = transcribeAudio(media)
+    if (transcript) {
+      userText = (text ? text + ' ' : '') + '[Áudio transcrito] ' + transcript
+    } else {
+      userText =
+        text || 'Recebi um áudio seu, mas não consegui transcrever agora. Pode repetir por texto?'
+    }
+  } else if (isImage) {
+    const media = downloadMedia()
+    if (media && media.base64) {
+      visionB64 = media.base64
+      visionMime = media.mimetype || 'image/jpeg'
+      if (!userText) userText = 'Recebi esta foto. Pode me ajudar?'
+    } else {
+      userText = text || 'Recebi sua foto, mas não consegui abri-la agora. Pode reenviar?'
+    }
+  } else if (isPdf) {
+    const media = downloadMedia()
+    if (media && media.base64) {
+      // Best-effort: send the PDF to GPT-4o vision as an image_url? GPT-4o
+      // supports PDF via file inputs only through the Files API, which we
+      // can't easily reach here. Instead, we attempt to extract readable
+      // text from the raw bytes using a minimal heuristic scan for text
+      // streams (BT...ET). This is imperfect but works for many simple
+      // PDFs; otherwise the library content_text is already in the prompt.
+      const decodeB64Str = (b64) => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '')
+        let out = ''
+        for (let i = 0; i < clean.length; i += 4) {
+          const c1 = chars.indexOf(clean.charAt(i))
+          const c2 = chars.indexOf(clean.charAt(i + 1))
+          const c3 = chars.indexOf(clean.charAt(i + 2))
+          const c4 = chars.indexOf(clean.charAt(i + 3))
+          out += String.fromCharCode((c1 << 2) | (c2 >> 4))
+          if (c3 !== 64) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2))
+          if (c4 !== 64) out += String.fromCharCode(((c3 & 3) << 6) | c4)
+        }
+        return out
+      }
+      try {
+        const raw = decodeB64Str(media.base64)
+        const extracted = []
+        const re = /\(((?:[^()\\]|\\.)*?)\)\s*Tj/g
+        let m
+        let guard = 0
+        while ((m = re.exec(raw)) && guard < 2000) {
+          const s = m[1].replace(/\\\(/g, '(').replace(/\\\)/g, ')')
+          if (s.trim()) extracted.push(s)
+          guard++
+        }
+        const pdfText = extracted.join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000)
+        if (pdfText) {
+          userText =
+            (text ? text + '\n\n' : '') +
+            '[Conteúdo extraído do PDF enviado pelo paciente]\n' +
+            pdfText
+        } else {
+          userText =
+            text ||
+            'Recebi seu PDF, mas não consegui extrair o texto dele agora. Pode me dizer o que ele contém?'
+        }
+      } catch (_) {
+        userText = text || 'Recebi seu PDF, mas não consegui processá-lo agora.'
+      }
+    } else {
+      userText = text || 'Recebi seu PDF, mas não consegui abri-lo agora. Pode reenviar?'
+    }
+  } else if (isDocument) {
+    userText = text || 'Recebi seu documento. Pode me dizer o que você precisa sobre ele?'
+  }
+
+  if (!userText) userText = 'Olá!'
+
+  // ── Persist the inbound user message ──
+  const inboundContent =
+    userText ||
+    (isAudio
+      ? '🎤 Áudio'
+      : isImage
+        ? '📷 Foto'
+        : isPdf
+          ? '📄 PDF'
+          : isDocument
+            ? '📄 Documento'
+            : '')
+  try {
+    const msgCol = $app.findCollectionByNameOrId('messages')
+    const userMsg = new Record(msgCol)
+    userMsg.set('contact', contactId)
+    userMsg.set('content', inboundContent)
+    userMsg.set('role', 'user')
+    userMsg.set('timestamp', new Date().toISOString())
+    $app.save(userMsg)
+    console.log('[whatsapp_webhook] inbound message saved contactId=' + contactId)
+  } catch (err) {
+    console.log(
+      '[whatsapp_webhook] failed to save inbound message: ' +
+        (err && err.message ? err.message : String(err)),
+    )
+  }
+
   // ── Build the nutrition system prompt (kept in sync with yasa_chat.js) ──
   const systemPrompt = (() => {
     const base =
-      'Você é Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
+      'Você é a Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
       '═══ IDENTIDADE ═══\n' +
       'Nome: Yasa (Assistente Nutrição Dr. Caio).\n' +
       'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação, refeições, lanches, receitas e trocas no plano alimentar.\n' +
       'Especialidade: nutrição clínica, dietética, gastronomia, alergias e intolerâncias alimentares, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, questões hormonais).\n' +
       'Tom: profissional, acolhedor, informal leve — próximo e humano.\n\n' +
+      '═══ FORMATAÇÃO DA RESPOSTA (MUITO IMPORTANTE) ═══\n' +
+      'Sempre responda em português do Brasil, com formatação rica e bonita no WhatsApp:\n' +
+      '- Use emojis com moderação e propósito (🥗 🍎 💧 ✅ 💡 🤗), no início das seções.\n' +
+      '- Separe em seções claras com uma linha em branco entre elas.\n' +
+      '- Estrutura sugerida: saudação curta → resposta principal → dica extra (quando útil) → encerramento acolhedor.\n' +
+      '- Use QUEBRAS DE LINHA entre os passos. Em listas, use • ou - no início de cada item.\n' +
+      '- Quando enviar RECEITA, formate com: 🍽️ Título, 📝 Ingredientes (lista), 👩‍🍳 Modo de preparo (passos), 💡 Dica.\n' +
+      '- Frases curtas e diretas. Nunca um bloco gigante de texto corrido.\n' +
+      '- Máximo ~250 palavras por resposta, salvo receitas completas.\n\n' +
       '═══ FLUXO DE RESPOSTA ═══\n' +
-      '1. Cumprimente o paciente pelo nome.\n' +
-      '2. Apresente-se como assistente nutricional do Dr. Caio.\n' +
-      '3. SEMPRE pergunte se o paciente tem foto do plano alimentar para anexar.\n' +
-      '4. Se o paciente enviar foto do plano, leia e entenda: calorias, porções, cuidados, alimentos prescritos.\n' +
+      '1. Cumprimente o paciente pelo nome quando souber.\n' +
+      '2. Apresente-se como assistente nutricional do Dr. Caio (na primeira interação).\n' +
+      '3. Se o paciente ainda não enviou o plano alimentar, pergunte se tem foto do plano para anexar.\n' +
+      '4. Se o paciente enviar foto (do prato, do plano, de um alimento), leia e entenda: calorias, porções, cuidados, alimentos prescritos, composição do prato.\n' +
       '5. Responda de forma prática, em passos simples.\n' +
       '6. Ao final, pergunte se há mais dúvidas.\n\n' +
-      '═══ ÁREAS DE CONHECIMENTO ═══\n' +
-      '- Nutrição clínica e dietética\n' +
-      '- Gastronomia (receitas, preparos, substituições culinárias)\n' +
-      '- Alergias e intolerâncias alimentares\n' +
-      '- Diabetes, colesterol, hipertensão\n' +
-      '- Saúde feminina: endometriose, menopausa, lipedema, questões hormonais\n\n' +
+      '═══ ÁREAS DE CONHECIMENTO (profundo) ═══\n' +
+      '- Nutrição clínica e dietética: cálculos, macros, micros, necessidades, dietas terapêuticas.\n' +
+      '- Gastronomia: receitas, preparos, substituições culinárias, técnicas, temperos.\n' +
+      '- Alergias e intolerâncias alimentares (gluten, lactose, frutos do mar, etc.).\n' +
+      '- Diabetes (tipos 1 e 2), insulina, contagem de carboidratos, índice glicêmico.\n' +
+      '- Colesterol e dislipidemias, hipertensão, síndrome metabólica.\n' +
+      '- Saúde feminina: endometriose, menopausa, lipedema, SOP, questões hormonais.\n' +
+      '- Nutrição infantil, esportiva, gestacional e vegetariana quando pertinente.\n\n' +
+      '═══ CONSULTA À BASE DE CONHECIMENTO LOCAL (OBRIGATÓRIO) ═══\n' +
+      'SEMPRE consulte PRIMEIRO a base de conhecimento local abaixo (receitas, modelos de plano alimentar e materiais do Dr. Caio) antes de usar conhecimento geral. ' +
+      'A base local é a fonte segura e prioritária. Só use conhecimento geral para complementar quando a base não cobrir o tema.\n\n' +
       '═══ REGRAS DE SEGURANÇA ═══\n' +
       '- NUNCA diagnosticar doenças.\n' +
       '- NUNCA prescrever medicamentos ou suplementos como tratamento.\n' +
@@ -407,6 +678,12 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         'Quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições, BUSQUE PRIMEIRO nestes modelos antes de usar conhecimento geral. Eles são a referência oficial do Dr. Caio.\n' +
         activeTpls.join('\n\n')
     }
+
+    extra +=
+      '\n═══ ENVIO DE DOCUMENTOS ═══\n' +
+      'Quando você julgar que enviar um PDF da biblioteca (receita, modelo de plano ou material) ajudaria o paciente, responda com uma linha no formato exato:\n' +
+      'ENVIAR_DOCUMENTO: <collection>|<recordId>\n' +
+      'Onde <collection> é "recipes", "meal_plan_templates" ou "agent_materials". Coloque essa linha no final da resposta. O sistema anexará o arquivo automaticamente.'
     return base + extra
   })()
 
@@ -433,12 +710,25 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const buildMessages = () => {
     const msgs = [{ role: 'system', content: systemPrompt }]
     for (const h of history) msgs.push({ role: h.role, content: h.content })
-    msgs.push({
-      role: 'user',
-      content: text || 'Recebi esta foto do meu plano alimentar. Pode analisar?',
-    })
+    if (visionB64) {
+      const cleaned =
+        visionB64.indexOf(',') >= 0 ? visionB64.split(',').slice(1).join(',') : visionB64
+      const dataUrl = 'data:' + visionMime + ';base64,' + cleaned
+      msgs.push({
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: dataUrl } },
+          { type: 'text', text: userText },
+        ],
+      })
+    } else {
+      msgs.push({ role: 'user', content: userText })
+    }
     return msgs
   }
+
+  // For vision, force a vision-capable model.
+  const effectiveModel = visionB64 ? 'gpt-4o' : model
 
   const callOpenAI = (modelName) => {
     return $http.send({
@@ -460,11 +750,14 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
 
   const startedAt = Date.now()
   let res = null
-  let usedModel = model
+  let usedModel = effectiveModel
   try {
-    res = callOpenAI(model)
+    res = callOpenAI(effectiveModel)
     console.log(
-      '[whatsapp_webhook] OpenAI primary model=' + model + ' status=' + (res && res.statusCode),
+      '[whatsapp_webhook] OpenAI primary model=' +
+        effectiveModel +
+        ' status=' +
+        (res && res.statusCode),
     )
   } catch (err) {
     console.log(
@@ -530,6 +823,19 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
 
   const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
 
+  // ── Extract any "send document" instruction from the model reply ──
+  let sendDocCollection = ''
+  let sendDocId = ''
+  const docMatch = content.match(/ENVIAR_DOCUMENTO:\s*([a-zA-Z_]+)\|([a-zA-Z0-9]+)/)
+  if (docMatch) {
+    sendDocCollection = docMatch[1]
+    sendDocId = docMatch[2]
+    content = content
+      .replace(/ENVIAR_DOCUMENTO:[^\n]*/g, '')
+      .replace(/\s+$/, '')
+      .trim()
+  }
+
   // ── Persist assistant reply ──
   try {
     const msgCol = $app.findCollectionByNameOrId('messages')
@@ -565,6 +871,60 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         timeout: 30,
       })
     } catch (_) {}
+
+    // Optionally send a document/PDF/image from the library.
+    if (sendDocCollection && sendDocId) {
+      try {
+        const rec = $app.findRecordById(sendDocCollection, sendDocId)
+        if (rec) {
+          const fileField = rec.getString('file') || ''
+          const pbUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
+          const token = $secrets.get('PB_SUPERUSER_TOKEN') || ''
+          if (fileField && pbUrl) {
+            const fileUrl =
+              pbUrl + '/api/files/' + sendDocCollection + '/' + sendDocId + '/' + fileField
+            const lower = fileField.toLowerCase()
+            const mediatype = lower.endsWith('.pdf')
+              ? 'document'
+              : lower.endsWith('.jpg') ||
+                  lower.endsWith('.jpeg') ||
+                  lower.endsWith('.png') ||
+                  lower.endsWith('.webp')
+                ? 'image'
+                : 'document'
+            const mimeForMedia =
+              mediatype === 'image'
+                ? lower.endsWith('.png')
+                  ? 'image/png'
+                  : 'image/jpeg'
+                : 'application/pdf'
+            // Prefer sending by URL (works for large files, no base64 bloat).
+            $http.send({
+              url: evoUrl + '/message/sendMedia/' + instanceName,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: evoKey },
+              body: JSON.stringify({
+                number: phoneNumber,
+                mediatype: mediatype,
+                mimetype: mimeForMedia,
+                media: fileUrl,
+                fileName: fileField,
+                caption: '📎 ' + (rec.getString('title') || 'Documento'),
+              }),
+              timeout: 60,
+            })
+            console.log(
+              '[whatsapp_webhook] sent library doc ' + sendDocCollection + '/' + sendDocId,
+            )
+          }
+        }
+      } catch (err) {
+        console.log(
+          '[whatsapp_webhook] send library doc failed: ' +
+            (err && err.message ? err.message : String(err)),
+        )
+      }
+    }
   }
 
   return e.json(200, {

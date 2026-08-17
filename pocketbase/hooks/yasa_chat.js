@@ -1,8 +1,14 @@
 /// <reference path="../pb_data/types.d.ts" />
-// Yasa chat endpoint — OpenAI Chat Completions API (text + vision via gpt-4o).
-// Builds the full nutrition system prompt, pulls per-user config + materials +
-// meal plan templates + recent conversation history, then calls OpenAI with
-// a configurable timeout (~30s default). Falls back to gpt-4o-mini on error.
+// Yasa chat endpoint — OpenAI Chat Completions API (text + vision via gpt-4o),
+// DALL-E 3 image generation, and library document delivery.
+//
+// Builds the full nutrition system prompt (shared with whatsapp_webhook.js),
+// pulls per-user config + materials + meal plan templates + recent history,
+// then calls OpenAI with a configurable timeout (~30s default). Falls back to
+// gpt-4o-mini on error. Supports optional image_base64 (vision) and an
+// optional generate_image flag that calls DALL-E 3 and returns the image URL.
+// When the model emits ENVIAR_DOCUMENTO: <collection>|<id>, the endpoint
+// returns a doc_url + doc_caption the frontend can surface.
 
 routerAdd(
   'POST',
@@ -44,28 +50,42 @@ routerAdd(
     let maxSeconds = cfg && cfg.get('max_response_seconds')
     if (!maxSeconds) maxSeconds = 30
 
-    // ── Build the full system prompt ──
+    // ── Build the full system prompt (shared with whatsapp_webhook.js) ──
     const systemPrompt = (() => {
       const base =
-        'Você é Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
+        'Você é a Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
         '═══ IDENTIDADE ═══\n' +
         'Nome: Yasa (Assistente Nutrição Dr. Caio).\n' +
         'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação, refeições, lanches, receitas e trocas no plano alimentar.\n' +
         'Especialidade: nutrição clínica, dietética, gastronomia, alergias e intolerâncias alimentares, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, questões hormonais).\n' +
         'Tom: profissional, acolhedor, informal leve — próximo e humano.\n\n' +
+        '═══ FORMATAÇÃO DA RESPOSTA (MUITO IMPORTANTE) ═══\n' +
+        'Sempre responda em português do Brasil, com formatação rica e bonita no WhatsApp:\n' +
+        '- Use emojis com moderação e propósito (🥗 🍎 💧 ✅ 💡 🤗), no início das seções.\n' +
+        '- Separe em seções claras com uma linha em branco entre elas.\n' +
+        '- Estrutura sugerida: saudação curta → resposta principal → dica extra (quando útil) → encerramento acolhedor.\n' +
+        '- Use QUEBRAS DE LINHA entre os passos. Em listas, use • ou - no início de cada item.\n' +
+        '- Quando enviar RECEITA, formate com: 🍽️ Título, 📝 Ingredientes (lista), 👩‍🍳 Modo de preparo (passos), 💡 Dica.\n' +
+        '- Frases curtas e diretas. Nunca um bloco gigante de texto corrido.\n' +
+        '- Máximo ~250 palavras por resposta, salvo receitas completas.\n\n' +
         '═══ FLUXO DE RESPOSTA ═══\n' +
-        '1. Cumprimente o paciente pelo nome.\n' +
-        '2. Apresente-se como assistente nutricional do Dr. Caio.\n' +
-        '3. SEMPRE pergunte se o paciente tem foto do plano alimentar para anexar.\n' +
-        '4. Se o paciente enviar foto do plano, leia e entenda: calorias, porções, cuidados, alimentos prescritos.\n' +
+        '1. Cumprimente o paciente pelo nome quando souber.\n' +
+        '2. Apresente-se como assistente nutricional do Dr. Caio (na primeira interação).\n' +
+        '3. Se o paciente ainda não enviou o plano alimentar, pergunte se tem foto do plano para anexar.\n' +
+        '4. Se o paciente enviar foto (do prato, do plano, de um alimento), leia e entenda: calorias, porções, cuidados, alimentos prescritos, composição do prato.\n' +
         '5. Responda de forma prática, em passos simples.\n' +
         '6. Ao final, pergunte se há mais dúvidas.\n\n' +
-        '═══ ÁREAS DE CONHECIMENTO ═══\n' +
-        '- Nutrição clínica e dietética\n' +
-        '- Gastronomia (receitas, preparos, substituições culinárias)\n' +
-        '- Alergias e intolerâncias alimentares\n' +
-        '- Diabetes, colesterol, hipertensão\n' +
-        '- Saúde feminina: endometriose, menopausa, lipedema, questões hormonais\n\n' +
+        '═══ ÁREAS DE CONHECIMENTO (profundo) ═══\n' +
+        '- Nutrição clínica e dietética: cálculos, macros, micros, necessidades, dietas terapêuticas.\n' +
+        '- Gastronomia: receitas, preparos, substituições culinárias, técnicas, temperos.\n' +
+        '- Alergias e intolerâncias alimentares (gluten, lactose, frutos do mar, etc.).\n' +
+        '- Diabetes (tipos 1 e 2), insulina, contagem de carboidratos, índice glicêmico.\n' +
+        '- Colesterol e dislipidemias, hipertensão, síndrome metabólica.\n' +
+        '- Saúde feminina: endometriose, menopausa, lipedema, SOP, questões hormonais.\n' +
+        '- Nutrição infantil, esportiva, gestacional e vegetariana quando pertinente.\n\n' +
+        '═══ CONSULTA À BASE DE CONHECIMENTO LOCAL (OBRIGATÓRIO) ═══\n' +
+        'SEMPRE consulte PRIMEIRO a base de conhecimento local abaixo (receitas, modelos de plano alimentar e materiais do Dr. Caio) antes de usar conhecimento geral. ' +
+        'A base local é a fonte segura e prioritária. Só use conhecimento geral para complementar quando a base não cobrir o tema.\n\n' +
         '═══ REGRAS DE SEGURANÇA ═══\n' +
         '- NUNCA diagnosticar doenças.\n' +
         '- NUNCA prescrever medicamentos ou suplementos como tratamento.\n' +
@@ -191,6 +211,12 @@ routerAdd(
           'Quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições, BUSQUE PRIMEIRO nestes modelos antes de usar conhecimento geral. Eles são a referência oficial do Dr. Caio.\n' +
           activeTpls.join('\n\n')
       }
+
+      extra +=
+        '\n═══ ENVIO DE DOCUMENTOS ═══\n' +
+        'Quando você julgar que enviar um PDF da biblioteca (receita, modelo de plano ou material) ajudaria o paciente, responda com uma linha no formato exato:\n' +
+        'ENVIAR_DOCUMENTO: <collection>|<recordId>\n' +
+        'Onde <collection> é "recipes", "meal_plan_templates" ou "agent_materials". Coloque essa linha no final da resposta. O sistema anexará o arquivo automaticamente.'
       return base + extra
     })()
 
@@ -203,7 +229,6 @@ routerAdd(
           const msgs = $app.findRecordsByFilter('messages', 'contact = {:cid}', '-created', 12, 0, {
             cid: contactId,
           })
-          // chronological (oldest first)
           const ordered = []
           for (let i = msgs.length - 1; i >= 0; i--) ordered.push(msgs[i])
           for (const m of ordered) {
@@ -219,16 +244,15 @@ routerAdd(
     })()
 
     // ── Build OpenAI messages array (system + history + user, with optional image) ──
+    const imgB64 = body.image_base64 || ''
+    const imgMime = body.image_mime || 'image/jpeg'
     const buildMessages = () => {
       const msgs = [{ role: 'system', content: systemPrompt }]
       for (const h of history) msgs.push({ role: h.role, content: h.content })
 
-      const imgB64 = body.image_base64 || ''
-      const imgMime = body.image_mime || 'image/jpeg'
       if (imgB64) {
         const cleaned = imgB64.indexOf(',') >= 0 ? imgB64.split(',').slice(1).join(',') : imgB64
         const dataUrl = 'data:' + imgMime + ';base64,' + cleaned
-        // gpt-4o vision: user message with content array (image_url + text)
         msgs.push({
           role: 'user',
           content: [
@@ -241,6 +265,9 @@ routerAdd(
       }
       return msgs
     }
+
+    // For vision, force a vision-capable model.
+    const effectiveModel = imgB64 ? 'gpt-4o' : model
 
     const callOpenAI = (modelName) => {
       const url = 'https://api.openai.com/v1/chat/completions'
@@ -264,13 +291,12 @@ routerAdd(
 
     const startedAt = Date.now()
     let res = null
-    let usedModel = model
+    let usedModel = effectiveModel
     try {
-      res = callOpenAI(model)
+      res = callOpenAI(effectiveModel)
     } catch (err) {
-      // network/timeout — try fallback model once
       $app.logger().warn('yasa openai primary failed', 'err', err.message || String(err))
-      const fallback = model === 'gpt-4o' ? 'gpt-4o-mini' : 'gpt-4o-mini'
+      const fallback = effectiveModel === 'gpt-4o' ? 'gpt-4o-mini' : 'gpt-4o-mini'
       try {
         res = callOpenAI(fallback)
         usedModel = fallback
@@ -290,7 +316,6 @@ routerAdd(
         if (j && j.error && j.error.message) detail = j.error.message
       } catch (_) {}
       $app.logger().error('yasa openai http error', 'code', code, 'detail', detail)
-      // retry once on 5xx with fallback model
       if (code >= 500 && usedModel !== 'gpt-4o-mini') {
         try {
           res = callOpenAI('gpt-4o-mini')
@@ -319,7 +344,6 @@ routerAdd(
       needsHuman = true
     }
 
-    // Heuristic: out-of-scope → needs human
     if (
       content.indexOf('Dr. Caio') >= 0 &&
       (content.indexOf('encaminhar') >= 0 ||
@@ -331,6 +355,58 @@ routerAdd(
     }
 
     const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+
+    // ── Extract any "send document" instruction from the model reply ──
+    let docUrl = ''
+    let docCaption = ''
+    const docMatch = content.match(/ENVIAR_DOCUMENTO:\s*([a-zA-Z_]+)\|([a-zA-Z0-9]+)/)
+    if (docMatch) {
+      const coll = docMatch[1]
+      const rid = docMatch[2]
+      try {
+        const rec = $app.findRecordById(coll, rid)
+        if (rec) {
+          const fileField = rec.getString('file') || ''
+          const pbUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
+          if (fileField && pbUrl) {
+            docUrl = pbUrl + '/api/files/' + coll + '/' + rid + '/' + fileField
+            docCaption = rec.getString('title') || 'Documento'
+          }
+        }
+      } catch (_) {}
+      content = content
+        .replace(/ENVIAR_DOCUMENTO:[^\n]*/g, '')
+        .replace(/\s+$/, '')
+        .trim()
+    }
+
+    // ── Optional DALL-E 3 image generation ──
+    let imageUrl = ''
+    if (body.generate_image === true) {
+      try {
+        const dalleRes = $http.send({
+          url: 'https://api.openai.com/v1/images/generations',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + apiKey,
+          },
+          body: JSON.stringify({
+            model: 'dall-e-3',
+            prompt:
+              'Ilustração nutricional simples e saudável, estilo infográfico limpo, em português do Brasil quando houver texto. Tema: ' +
+              message.slice(0, 600),
+            n: 1,
+            size: '1024x1024',
+          }),
+          timeout: 60,
+        })
+        if (dalleRes && dalleRes.statusCode && dalleRes.statusCode < 400) {
+          const j = dalleRes.json || {}
+          if (j.data && j.data.length > 0 && j.data[0].url) imageUrl = j.data[0].url
+        }
+      } catch (_) {}
+    }
 
     // ── Persist: store the assistant message + mark needs_human ──
     let savedMessageId = ''
@@ -348,7 +424,6 @@ routerAdd(
         $app.save(aiMsg)
         savedMessageId = aiMsg.id
 
-        // update contact last_message
         try {
           const contact = $app.findRecordById('contacts', contactId)
           contact.set('last_message', content)
@@ -360,12 +435,18 @@ routerAdd(
       }
     }
 
-    return e.json(200, {
+    const resp = {
       content: content,
       message_id: savedMessageId,
       needs_human: needsHuman,
       model: usedModel,
-    })
+    }
+    if (docUrl) {
+      resp.doc_url = docUrl
+      resp.doc_caption = docCaption
+    }
+    if (imageUrl) resp.image_url = imageUrl
+    return e.json(200, resp)
   },
   $apis.requireAuth(),
 )
