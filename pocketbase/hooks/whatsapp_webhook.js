@@ -22,9 +22,19 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const instance = (body.instance || '').toString()
   const data = body.data || {}
 
+  console.log(
+    '[whatsapp_webhook] received event="' +
+      event +
+      '" instance="' +
+      instance +
+      '" dataKeys=' +
+      (data ? Object.keys(data).join(',') : '(none)'),
+  )
+
   // ── CONNECTION_UPDATE: sync integration status ──
   if (event === 'CONNECTION_UPDATE' || event === 'connection.update') {
     const state = (data.state || '').toString()
+    console.log('[whatsapp_webhook] CONNECTION_UPDATE state=' + state + ' instance=' + instance)
     try {
       const integ = $app.findFirstRecordByData('integrations', 'instance_name', instance)
       if (integ) {
@@ -32,13 +42,22 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         else if (state === 'close' || state === 'closed' || state === 'connecting')
           integ.set('status', state === 'connecting' ? 'WAITING_QR' : 'DISCONNECTED')
         $app.save(integ)
+        console.log('[whatsapp_webhook] integration status updated → ' + integ.getString('status'))
+      } else {
+        console.log('[whatsapp_webhook] no integration found for instance=' + instance)
       }
-    } catch (_) {}
+    } catch (err) {
+      console.log(
+        '[whatsapp_webhook] CONNECTION_UPDATE error: ' +
+          (err && err.message ? err.message : String(err)),
+      )
+    }
     return e.json(200, { ok: true })
   }
 
   // ── MESSAGES_UPSERT: incoming/outgoing message ──
   if (event !== 'MESSAGES_UPSERT' && event !== 'messages.upsert') {
+    console.log('[whatsapp_webhook] skipping unhandled event=' + event)
     return e.json(200, { ok: true, skipped: 'unhandled_event' })
   }
 
@@ -96,10 +115,50 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     integ = $app.findFirstRecordByData('integrations', 'instance_name', instance)
   } catch (_) {}
   if (!integ) {
-    return e.json(200, { ok: true, skipped: 'no_integration' })
+    console.log(
+      '[whatsapp_webhook] MESSAGES_UPSERT skipped: no integration for instance=' +
+        instance +
+        ' (try also match by name)',
+    )
+    // Evolution v2 sometimes sends instance as the name object or a different identifier.
+    // As a fallback, try to find any CONNECTED integration owned by... we can't know owner here.
+    // List all integrations and match by instance_name loosely.
+    let allIntegs = []
+    try {
+      allIntegs = $app.findRecordsByFilter(
+        'integrations',
+        "status = 'CONNECTED'",
+        '-created',
+        20,
+        0,
+      )
+    } catch (_) {}
+    if (allIntegs.length > 0) {
+      integ = allIntegs[0]
+      console.log(
+        '[whatsapp_webhook] fallback: using integration id=' +
+          integ.id +
+          ' instance=' +
+          integ.getString('instance_name'),
+      )
+    }
+    if (!integ) return e.json(200, { ok: true, skipped: 'no_integration' })
   }
   const owner = integ.getString('owner')
-  if (!owner) return e.json(200, { ok: true, skipped: 'no_owner' })
+  if (!owner) {
+    console.log('[whatsapp_webhook] MESSAGES_UPSERT skipped: no owner on integration')
+    return e.json(200, { ok: true, skipped: 'no_owner' })
+  }
+  console.log(
+    '[whatsapp_webhook] MESSAGES_UPSERT from=' +
+      remoteJid +
+      ' fromMe=' +
+      fromMe +
+      ' text="' +
+      (text || '').slice(0, 60) +
+      '" owner=' +
+      owner,
+  )
 
   let evoUrl = $secrets.get('EVOLUTION_API_URL') || ''
   if (evoUrl.length > 0 && evoUrl.endsWith('/')) evoUrl = evoUrl.slice(0, -1)
@@ -191,7 +250,13 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     userMsg.set('role', 'user')
     userMsg.set('timestamp', new Date().toISOString())
     $app.save(userMsg)
-  } catch (_) {}
+    console.log('[whatsapp_webhook] inbound message saved contactId=' + contactId)
+  } catch (err) {
+    console.log(
+      '[whatsapp_webhook] failed to save inbound message: ' +
+        (err && err.message ? err.message : String(err)),
+    )
+  }
 
   // ── Resolve OpenAI key (per-user → shared secret) ──
   const apiKey = (() => {
@@ -398,19 +463,40 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   let usedModel = model
   try {
     res = callOpenAI(model)
+    console.log(
+      '[whatsapp_webhook] OpenAI primary model=' + model + ' status=' + (res && res.statusCode),
+    )
   } catch (err) {
+    console.log(
+      '[whatsapp_webhook] OpenAI primary failed: ' +
+        (err && err.message ? err.message : String(err)),
+    )
     try {
       res = callOpenAI('gpt-4o-mini')
       usedModel = 'gpt-4o-mini'
+      console.log(
+        '[whatsapp_webhook] OpenAI fallback model=gpt-4o-mini status=' + (res && res.statusCode),
+      )
     } catch (err2) {
+      console.log(
+        '[whatsapp_webhook] OpenAI fallback also failed: ' +
+          (err2 && err2.message ? err2.message : String(err2)),
+      )
       return e.json(200, { ok: true, skipped: 'openai_failed' })
     }
   }
 
   if (!res || !res.statusCode || res.statusCode >= 400) {
+    console.log(
+      '[whatsapp_webhook] OpenAI http error status=' +
+        (res && res.statusCode) +
+        ' body=' +
+        (res && res.body ? res.body.toString().slice(0, 300) : ''),
+    )
     try {
       res = callOpenAI('gpt-4o-mini')
       usedModel = 'gpt-4o-mini'
+      console.log('[whatsapp_webhook] OpenAI retry fallback status=' + (res && res.statusCode))
     } catch (_) {
       return e.json(200, { ok: true, skipped: 'openai_http_error' })
     }

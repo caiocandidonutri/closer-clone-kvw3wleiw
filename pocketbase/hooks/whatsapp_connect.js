@@ -26,11 +26,26 @@ routerAdd(
     if (evoUrl.length > 0 && evoUrl.endsWith('/')) evoUrl = evoUrl.slice(0, -1)
     const evoKey = $secrets.get('EVOLUTION_API_KEY') || ''
     if (!evoUrl || !evoKey) {
+      console.log(
+        '[whatsapp_connect] missing config — evoUrl=' +
+          (evoUrl || '(empty)') +
+          ' evoKey=' +
+          (evoKey ? '(set)' : '(empty)'),
+      )
       return e.json(500, { error: 'Evolution API not configured. Contact support.' })
     }
 
     var pbUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
     var webhookUrl = pbUrl + '/backend/v1/webhook/evolution'
+
+    console.log(
+      '[whatsapp_connect] start instance=' +
+        instanceName +
+        ' evoUrl=' +
+        evoUrl +
+        ' webhookUrl=' +
+        webhookUrl,
+    )
 
     // 1. Check current connection state
     const stateRes = $http.send({
@@ -39,6 +54,13 @@ routerAdd(
       headers: { apikey: evoKey },
       timeout: 15,
     })
+
+    console.log(
+      '[whatsapp_connect] connectionState status=' +
+        stateRes.statusCode +
+        ' body=' +
+        (stateRes.body || '').toString().slice(0, 500),
+    )
 
     if (stateRes.statusCode === 200) {
       let stateData = {}
@@ -50,6 +72,7 @@ routerAdd(
       if (st === 'open') {
         integ.set('status', 'CONNECTED')
         $app.save(integ)
+        console.log('[whatsapp_connect] already CONNECTED — returning early')
         return e.json(200, { status: 'CONNECTED', base64: null })
       }
     }
@@ -68,7 +91,15 @@ routerAdd(
       timeout: 30,
     })
 
+    console.log(
+      '[whatsapp_connect] create status=' +
+        createRes.statusCode +
+        ' body=' +
+        (createRes.body || '').toString().slice(0, 500),
+    )
+
     if (createRes.statusCode === 401 || createRes.statusCode === 403) {
+      console.log('[whatsapp_connect] auth failed (401/403) — API key rejected by Evolution')
       return e.json(500, { error: 'Evolution API authentication failed. Check API key.' })
     }
 
@@ -80,6 +111,7 @@ routerAdd(
           createErr = errJson.message || errJson.error
         }
       } catch (_) {}
+      console.log('[whatsapp_connect] create failed err=' + createErr)
       return e.json(200, { status: 'ERROR', base64: null, error: createErr })
     }
 
@@ -90,7 +122,7 @@ routerAdd(
         createData = createRes.json || {}
       } catch (_) {}
       if (createData.qrcode && createData.qrcode.base64) {
-        $http.send({
+        const setWbRes = $http.send({
           url: evoUrl + '/webhook/set/' + instanceName,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: evoKey },
@@ -103,6 +135,12 @@ routerAdd(
           }),
           timeout: 20,
         })
+        console.log(
+          '[whatsapp_connect] webhook/set (after create) status=' +
+            setWbRes.statusCode +
+            ' body=' +
+            (setWbRes.body || '').toString().slice(0, 300),
+        )
         integ.set('webhook_url', webhookUrl)
         integ.set('status', 'WAITING_QR')
         $app.save(integ)
@@ -111,7 +149,7 @@ routerAdd(
     }
 
     // 4. Set webhook for existing instance
-    $http.send({
+    const setWbRes2 = $http.send({
       url: evoUrl + '/webhook/set/' + instanceName,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: evoKey },
@@ -124,6 +162,12 @@ routerAdd(
       }),
       timeout: 20,
     })
+    console.log(
+      '[whatsapp_connect] webhook/set (existing) status=' +
+        setWbRes2.statusCode +
+        ' body=' +
+        (setWbRes2.body || '').toString().slice(0, 300),
+    )
     integ.set('webhook_url', webhookUrl)
 
     // 5. Get QR via connect endpoint
@@ -133,6 +177,13 @@ routerAdd(
       headers: { apikey: evoKey },
       timeout: 30,
     })
+
+    console.log(
+      '[whatsapp_connect] connect status=' +
+        connectRes.statusCode +
+        ' body=' +
+        (connectRes.body || '').toString().slice(0, 500),
+    )
 
     if (connectRes.statusCode >= 400) {
       let connectErr = 'QR code not ready. Please try again.'
@@ -159,6 +210,7 @@ routerAdd(
     if (connState === 'open') {
       integ.set('status', 'CONNECTED')
       $app.save(integ)
+      console.log('[whatsapp_connect] CONNECTED via connect endpoint')
       return e.json(200, { status: 'CONNECTED', base64: null })
     }
 
@@ -167,6 +219,7 @@ routerAdd(
     $app.save(integ)
 
     if (!base64) {
+      console.log('[whatsapp_connect] no QR returned — WAITING_QR')
       return e.json(200, {
         status: 'WAITING_QR',
         base64: null,
@@ -174,6 +227,7 @@ routerAdd(
       })
     }
 
+    console.log('[whatsapp_connect] returning QR code')
     return e.json(200, { status: 'WAITING_QR', base64: base64 })
   },
   $apis.requireAuth(),
