@@ -77,3 +77,20 @@ export const syncWhatsapp = async (integrationId?: string): Promise<SyncResult> 
     method: 'POST',
     body: { integrationId },
   })
+
+export interface CleanupSyncResult {
+  success: boolean
+  removed_contacts: number
+  removed_messages: number
+  imported_contacts: number
+  imported_messages: number
+  sync_skipped: boolean
+  message?: string
+}
+
+/** Remove mock contacts (sem remote_jid) e sincroniza conversas reais do WhatsApp. */
+export const cleanupAndSyncWhatsapp = async (integrationId?: string): Promise<CleanupSyncResult> =>
+  await pb.send('/backend/v1/whatsapp/cleanup-sync', {
+    method: 'POST',
+    body: { integrationId },
+  })

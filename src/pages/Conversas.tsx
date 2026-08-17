@@ -4,7 +4,7 @@ import { useContacts } from '@/hooks/use-contacts'
 import { useMessages } from '@/hooks/use-messages'
 import { useLanguage } from '@/hooks/use-language'
 import { getContact, Contact } from '@/services/contacts'
-import { sendMessage } from '@/services/integrations'
+import { sendMessage, cleanupAndSyncWhatsapp } from '@/services/integrations'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,37 @@ export default function Conversas() {
 
   const { contacts, loading: loadingContacts } = useContacts()
   const [search, setSearch] = useState('')
+
+  // Sincronização inicial: limpa mocks e importava conversas reais do WhatsApp.
+  const [syncing, setSyncing] = useState(false)
+  const [hasSynced, setHasSynced] = useState(false)
+
+  useEffect(() => {
+    if (hasSynced) return
+    setHasSynced(true)
+    let active = true
+    setSyncing(true)
+    cleanupAndSyncWhatsapp()
+      .then((res) => {
+        if (!active) return
+        if (res && res.success) {
+          if (res.imported_contacts > 0 || res.removed_contacts > 0) {
+            toast.success(
+              `Conversas sincronizadas: ${res.imported_contacts} importadas, ${res.removed_contacts} mocks removidos.`,
+            )
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('[Conversas] cleanup-sync:', err)
+      })
+      .finally(() => {
+        if (active) setSyncing(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [hasSynced])
 
   // Conversa ativa
   const [contact, setContact] = useState<Contact | null>(null)
@@ -160,9 +191,17 @@ export default function Conversas() {
         )}
       >
         <div className="px-5 pt-5 pb-3 border-b border-border/60">
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            {t('conversas_title')}
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">
+              {t('conversas_title')}
+            </h2>
+            {syncing && (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Sincronizando
+              </span>
+            )}
+          </div>
           <p className="text-[13px] font-medium text-muted-foreground mt-0.5">
             {t('conversas_desc')}
           </p>
