@@ -15,7 +15,8 @@
 // the frontend useRealtime('contacts' | 'messages') picks them up.
 
 routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
-  const body = e.requestInfo().body || {}
+  const raw = e.requestInfo().body
+  const body = typeof raw === 'string' ? JSON.parse(raw) : raw || {}
 
   const event = (body.event || '').toString().toUpperCase()
   const instance = (body.instance || '').toString()
