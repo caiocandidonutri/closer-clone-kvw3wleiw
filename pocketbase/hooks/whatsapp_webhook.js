@@ -353,61 +353,36 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const transcribeAudio = (media) => {
     if (!media || !media.base64) return ''
     try {
-      const boundary = '----yasa' + $security.randomString(12)
-      const parts = []
-      parts.push('--' + boundary + '\r\n')
-      parts.push('Content-Disposition: form-data; name="model"\r\n\r\n')
-      parts.push('whisper-1\r\n')
-      parts.push('--' + boundary + '\r\n')
-      parts.push('Content-Disposition: form-data; name="language"\r\n\r\n')
-      parts.push('pt\r\n')
-      parts.push('--' + boundary + '\r\n')
       const fname = media.filename || 'audio.mp3'
-      parts.push(
-        'Content-Disposition: form-data; name="file"; filename="' +
-          fname +
-          '"\r\nContent-Type: ' +
-          media.mimetype +
-          '\r\n\r\n',
-      )
-      const tail = '\r\n--' + boundary + '--\r\n'
-      // Minimal base64 → binary-string decoder (JSVM has no atob).
-      const atobRaw = (b64) => {
-        // Minimal base64 decoder for ASCII output characters.
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '')
-        let out = ''
-        for (let i = 0; i < clean.length; i += 4) {
-          const c1 = chars.indexOf(clean.charAt(i))
-          const c2 = chars.indexOf(clean.charAt(i + 1))
-          const c3 = chars.indexOf(clean.charAt(i + 2))
-          const c4 = chars.indexOf(clean.charAt(i + 3))
-          out += String.fromCharCode((c1 << 2) | (c2 >> 4))
-          if (c3 !== 64) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2))
-          if (c4 !== 64) out += String.fromCharCode(((c3 & 3) << 6) | c4)
-        }
-        return out
+      // Decode the base64 audio into a raw byte array (the JSVM has no atob).
+      const charsB64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      const cleanB64 = media.base64.replace(/[^A-Za-z0-9+/=]/g, '')
+      const audioBytes = []
+      for (let i = 0; i < cleanB64.length; i += 4) {
+        const c1 = charsB64.indexOf(cleanB64.charAt(i))
+        const c2 = charsB64.indexOf(cleanB64.charAt(i + 1))
+        const c3 = charsB64.indexOf(cleanB64.charAt(i + 2))
+        const c4 = charsB64.indexOf(cleanB64.charAt(i + 3))
+        audioBytes.push((c1 << 2) | (c2 >> 4))
+        if (c3 !== 64) audioBytes.push(((c2 & 15) << 4) | (c3 >> 2))
+        if (c4 !== 64) audioBytes.push(((c3 & 3) << 6) | c4)
       }
-      // Assemble multipart as a single string with binary represented via
-      // escaped chars; $http.send accepts a string body with a multipart
-      // Content-Type as long as the byte values are preserved. Because the
-      // audio bytes may include any value 0-255, we MUST send bytes, not a
-      // JS string. Build a Uint8Array-like via array of byte values.
-      const binStr = atobRaw(media.base64)
-      const headerStr = parts.join('')
-      const bodyBytes = []
-      for (let i = 0; i < headerStr.length; i++) bodyBytes.push(headerStr.charCodeAt(i) & 0xff)
-      for (let i = 0; i < binStr.length; i++) bodyBytes.push(binStr.charCodeAt(i) & 0xff)
-      for (let i = 0; i < tail.length; i++) bodyBytes.push(tail.charCodeAt(i) & 0xff)
+      // Build the multipart body via FormData + $filesystem.fileFromBytes so
+      // that $http.send emits a correct multipart/form-data payload. Passing a
+      // plain JS byte array as `body` makes the JSVM JSON-serialize it, which
+      // corrupts the multipart and makes Whisper return HTTP 400. FormData is
+      // handled natively and produces the right Content-Type/boundary. Do NOT
+      // set Content-Type manually — PocketBase fills it in from the FormData.
+      const formData = new FormData()
+      formData.append('model', 'whisper-1')
+      formData.append('language', 'pt')
+      formData.append('file', $filesystem.fileFromBytes(audioBytes, fname))
 
       const res = $http.send({
         url: 'https://api.openai.com/v1/audio/transcriptions',
         method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + apiKey,
-          'Content-Type': 'multipart/form-data; boundary=' + boundary,
-        },
-        body: bodyBytes,
+        headers: { Authorization: 'Bearer ' + apiKey },
+        body: formData,
         timeout: 60,
       })
       if (!res || !res.statusCode || res.statusCode >= 400) {
