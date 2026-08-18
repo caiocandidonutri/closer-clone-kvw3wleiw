@@ -34,10 +34,13 @@ cronAdd('infinitepay_auto_create', '*/30 * * * *', () => {
   const explicitRedirect =
     $os.getenv('INFINITEPAY_REDIRECT_URL') || $secrets.get('INFINITEPAY_REDIRECT_URL') || ''
 
+  // The InfinitePay API uses the Portuguese spelling `itens` (NOT `items`).
+  // Webhook + redirect URLs are the platform's public webhook endpoint, sent
+  // verbatim (no query string) unless an explicit override is configured.
   const webhookUrl =
-    explicitWebhook || (instanceUrl || siteUrl) + '/backend/v1/webhook/infinitepay?handle=' + handle
+    explicitWebhook || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
   const redirectUrl =
-    explicitRedirect || (siteUrl || 'https://nutriresponde.goskip.app') + '/?paid=1'
+    explicitRedirect || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
 
   const planDefs = [
     {
@@ -83,12 +86,13 @@ cronAdd('infinitepay_auto_create', '*/30 * * * *', () => {
       $app.save(planRec)
     }
 
+    // NOTE: InfinitePay uses `itens` (Portuguese), not `items`.
     const reqBody = {
       handle: handle,
       redirect_url: redirectUrl,
       webhook_url: webhookUrl,
       order_nsu: nsu,
-      items: [{ quantity: 1, price: def.priceCents, description: def.name }],
+      itens: [{ quantity: 1, price: def.priceCents, description: def.name }],
     }
     const headers = { 'Content-Type': 'application/json' }
     if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey

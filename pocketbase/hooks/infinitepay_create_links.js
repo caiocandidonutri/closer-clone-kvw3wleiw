@@ -48,12 +48,16 @@ routerAdd(
     const explicitRedirect =
       $os.getenv('INFINITEPAY_REDIRECT_URL') || $secrets.get('INFINITEPAY_REDIRECT_URL') || ''
 
-    // Prefer the explicit override, then the backend instance URL, then SITE_URL.
+    // The InfinitePay docs field is `itens` (Portuguese spelling) — NOT `items`.
+    // Sending `items` silently drops the order items and the API rejects the link.
+    //
+    // Webhook + redirect URLs: the platform's public webhook endpoint. The
+    // InfinitePay dashboard was configured with this exact URL, so we send it
+    // verbatim (no query string) unless an explicit override is provided.
     const webhookUrl =
-      explicitWebhook ||
-      (instanceUrl || siteUrl) + '/backend/v1/webhook/infinitepay?handle=' + handle
+      explicitWebhook || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
     const redirectUrl =
-      explicitRedirect || (siteUrl || 'https://nutriresponde.goskip.app') + '/?paid=1'
+      explicitRedirect || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
 
     console.log(
       '[infinitepay_create_links] handle=' +
@@ -106,14 +110,16 @@ routerAdd(
         $app.save(planRec)
       }
 
-      // Build the checkout link request body. InfinitePay accepts both
-      // `items` and `itens`; we send `items` per the official docs.
+      // Build the checkout link request body.
+      // NOTE: the InfinitePay Checkout API uses the Portuguese spelling `itens`
+      // (not `items`). Using `items` causes the order items to be ignored and
+      // the link creation to fail. See https://www.infinitepay.io/checkout-documentacao
       const reqBody = {
         handle: handle,
         redirect_url: redirectUrl,
         webhook_url: webhookUrl,
         order_nsu: nsu,
-        items: [
+        itens: [
           {
             quantity: 1,
             price: def.priceCents,
