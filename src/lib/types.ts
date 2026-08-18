@@ -119,6 +119,10 @@ export interface SubscriptionPlan {
   price_brl: number
   duration_days: number
   message_limit: number
+  /** "total" = limite acumulado (free_trial/weekly); "daily" = reseta a cada 24h (monthly/quarterly) */
+  limit_type: 'total' | 'daily'
+  /** true para Mensal e Trimestral (lista de compras + modo geladeira) */
+  has_all_features: boolean
   is_active: boolean
   benefits: string[]
   created: string
@@ -143,6 +147,8 @@ export interface Patient {
   subscription_end: string
   message_count_used: number
   message_count_limit: number
+  /** âncora do reset diário para planos com limit_type = "daily" */
+  message_reset_date: string
   contact: string
   invited_by: string
   created: string

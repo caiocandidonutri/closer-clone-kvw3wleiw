@@ -515,7 +515,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     )
   }
 
-  // ── Patient subscription check: enforce trial limits & expiration ──
+  // ── Patient subscription check: enforce limits, expiration & feature gating ──
   // Resolve the patient record (if any) linked to this contact or phone.
   let patient = null
   try {
@@ -534,6 +534,26 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     } catch (_) {}
   }
 
+  // Resolve the subscription plan record to read limit_type / has_all_features.
+  let planRec = null
+  let planSlug = ''
+  let limitType = 'total' // default semantics for legacy/unknown plans
+  let hasAllFeatures = true
+  let planLimit = 0
+  if (patient) {
+    planSlug = patient.getString('subscription_plan')
+    try {
+      planRec = $app.findFirstRecordByData('subscription_plans', 'slug', planSlug)
+    } catch (_) {}
+    if (planRec) {
+      const lt = planRec.getString('limit_type')
+      if (lt === 'daily' || lt === 'total') limitType = lt
+      hasAllFeatures = planRec.getBool('has_all_features')
+      const ml = planRec.get('message_limit')
+      if (typeof ml === 'number') planLimit = ml
+    }
+  }
+
   let patientBlocked = false
   if (patient) {
     // Expire subscription if end date has passed.
@@ -548,25 +568,67 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         patientBlocked = true
       }
     }
-    // Trial message limit.
+
+    // Daily-limit plans: reset the counter when 24h have passed since the
+    // last reset anchor (message_reset_date).
+    if (!patientBlocked && limitType === 'daily') {
+      let resetStr = patient.getString('message_reset_date')
+      let needsReset = false
+      if (!resetStr) {
+        needsReset = true
+      } else {
+        const resetTime = new Date(resetStr).getTime()
+        if (isNaN(resetTime) || Date.now() - resetTime >= 24 * 60 * 60 * 1000) {
+          needsReset = true
+        }
+      }
+      if (needsReset) {
+        patient.set('message_count_used', 0)
+        patient.set('message_reset_date', new Date().toISOString())
+        try {
+          $app.save(patient)
+        } catch (_) {}
+      }
+    }
+
+    // Enforce message limit (total for free_trial/weekly, daily for monthly/quarterly).
     if (!patientBlocked) {
-      const plan = patient.getString('subscription_plan')
-      const used = patient.get('message_count_used') || 0
+      let used = patient.get('message_count_used') || 0
       let limit = patient.get('message_count_limit')
-      // If limit not set on the record, derive from the plan.
-      if ((limit === null || limit === '' || typeof limit !== 'number') && plan === 'free_trial') {
-        limit = 20
-      }
       if (limit === null || limit === '' || typeof limit !== 'number') {
-        limit = 0 // 0 = unlimited
+        limit = planLimit // fall back to the plan definition
       }
-      if (limit > 0 && used >= limit) {
+      if (limit && limit > 0 && used >= limit) {
         patientBlocked = true
       }
     }
   }
 
-  // If blocked, send the upgrade/expired message and stop (do not call the AI).
+  // Detect whether the patient is requesting a premium-only feature
+  // (lista de compras inteligente / modo geladeira). These are exclusive to
+  // Mensal and Trimestral. Free Trial and Semanal patients get a polite
+  // upsell instead of the AI answer.
+  const lowerText = (userText || '').toLowerCase()
+  const wantsShoppingList =
+    lowerText.indexOf('lista de compras') >= 0 ||
+    lowerText.indexOf('lista do mercado') >= 0 ||
+    lowerText.indexOf('lista de supermercado') >= 0 ||
+    lowerText.indexOf('o que comprar') >= 0 ||
+    lowerText.indexOf('lista de compra') >= 0
+  const wantsFridgeMode =
+    lowerText.indexOf('geladeira') >= 0 ||
+    lowerText.indexOf('despensa') >= 0 ||
+    lowerText.indexOf('o que faço com') >= 0 ||
+    lowerText.indexOf('o que preparo') >= 0 ||
+    lowerText.indexOf('tenho esses alimentos') >= 0
+  const featureLocked = !!(
+    patient &&
+    planSlug &&
+    (planSlug === 'free_trial' || planSlug === 'weekly')
+  )
+  const requestPremiumFeature = wantsShoppingList || wantsFridgeMode
+
+  // If blocked by limit/expiration, send the upgrade message and stop.
   if (patientBlocked) {
     const appUrl = (
       $secrets.get('SITE_URL') ||
@@ -575,10 +637,14 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       ''
     ).replace(/\/$/, '')
     const upgradeLink = appUrl ? appUrl + '/app/planos' : 'https://nutriresponde.app/app/planos'
-    const blockText =
-      'Seu período de teste chegou ao fim! 🌿\n\n' +
-      'Para continuar recebendo orientações personalizadas da Yasa, escolha seu plano de assinatura:\n' +
-      upgradeLink
+    const isTrialPlan = planSlug === 'free_trial'
+    const blockText = isTrialPlan
+      ? 'Seu período de teste chegou ao fim! 🌿\n\n' +
+        'Para continuar recebendo orientações personalizadas da Yasa, escolha seu plano de assinatura:\n' +
+        upgradeLink
+      : 'Você atingiu o limite de mensagens do seu plano 🌿\n\n' +
+        'Para continuar conversando com a Yasa, faça upgrade ou renove sua assinatura:\n' +
+        upgradeLink
 
     // Persist the block message as the assistant reply.
     try {
@@ -608,6 +674,57 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       } catch (_) {}
     }
     return e.json(200, { ok: true, skipped: 'patient_blocked', contact_id: contactId })
+  }
+
+  // If the patient is on a locked plan and asked for a premium feature,
+  // respond with a polite upsell instead of calling the AI.
+  if (featureLocked && requestPremiumFeature) {
+    const appUrl = (
+      $secrets.get('SITE_URL') ||
+      $secrets.get('APP_PUBLIC_URL') ||
+      $secrets.get('FRONTEND_URL') ||
+      ''
+    ).replace(/\/$/, '')
+    const upgradeLink = appUrl ? appUrl + '/app/planos' : 'https://nutriresponde.app/app/planos'
+    const featureName = wantsShoppingList
+      ? 'a lista de compras inteligente'
+      : 'o modo "O que tenho na geladeira?"'
+    const upsellText =
+      'Olá! 😊\n\n' +
+      'O recurso ' +
+      featureName +
+      ' está disponível a partir do plano Mensal (R$79,90/mês), que já inclui todos os recursos da Yasa.\n\n' +
+      'Você pode fazer upgrade do seu plano atual aqui:\n' +
+      upgradeLink +
+      '\n\nSe tiver qualquer dúvida, é só me chamar! 🤗'
+
+    try {
+      const msgCol = $app.findCollectionByNameOrId('messages')
+      const aiMsg = new Record(msgCol)
+      aiMsg.set('contact', contactId)
+      aiMsg.set('content', upsellText)
+      aiMsg.set('role', 'assistant')
+      aiMsg.set('timestamp', new Date().toISOString())
+      $app.save(aiMsg)
+      contact.set('last_message', upsellText)
+      contact.set('status', 'responded')
+      contact.set('last_message_from_me', true)
+      contact.set('last_message_at', new Date().toISOString())
+      $app.save(contact)
+    } catch (_) {}
+
+    if (!isLid && evoUrl && evoKey && instanceName) {
+      try {
+        $http.send({
+          url: evoUrl + '/message/sendText/' + instanceName,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: evoKey },
+          body: JSON.stringify({ number: phoneNumber, text: upsellText }),
+          timeout: 30,
+        })
+      } catch (_) {}
+    }
+    return e.json(200, { ok: true, skipped: 'feature_locked', contact_id: contactId })
   }
 
   // ── Build the nutrition system prompt (kept in sync with yasa_chat.js) ──
@@ -750,9 +867,13 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     }
 
     extra +=
-      '\n\n═══ CAPACIDADES ESPECIAIS (NOVAS) ═══\n' +
+      '\n\n═══ CAPACIDADES ESPECIAIS (RECURSOS PREMIUM) ═══\n' +
       'Você tem duas capacidades especiais além do atendimento nutricional normal. Identifique a intenção do paciente e ative quando ele pedir.\n\n' +
-      '——— 1) LISTA DE COMPRAS INTELIGENTE ———\n' +
+      '⚠️ IMPORTANTE — CONTROLE DE ACESSO POR PLANO:\n' +
+      'A LISTA DE COMPRAS INTELIGENTE e o MODO "O QUE TENHO NA GELADEIRA?" são recursos EXCLUSIVOS dos planos Mensal e Trimestral. ' +
+      'Pacientes dos planos Free Trial e Semanal NÃO têm acesso a esses recursos. ' +
+      'Se um paciente do plano Free Trial ou Semanal pedir lista de compras, lista do mercado ou o modo geladeira, responda de forma educada e acolhedora que esse recurso está disponível a partir do plano Mensal (R$79,90/mês), que já inclui todos os recursos da Yasa. Não execute o recurso. Os demais assuntos nutricionais (dúvidas, receitas, trocas, plano alimentar) continuam disponíveis para todos os planos.\n\n' +
+      '——— 1) LISTA DE COMPRAS INTELIGENTE (Mensal e Trimestral) ———\n' +
       'Quando o paciente pedir "lista de compras", "montar lista do mercado", "o que comprar essa semana", "lista de supermercado", ou similar:\n' +
       '1. Consulte o plano alimentar ativo do paciente (nos MODELOS DE PLANOS ALIMENTARES abaixo ou no contexto da conversa).\n' +
       '2. Monte uma lista organizada por corredor de supermercado brasileiro, usando exatamente estas seções com seus emojis:\n' +
@@ -760,14 +881,14 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       '3. Para cada item, inclua uma quantidade estimada para a semana (ex.: "2 kg de peito de frango", "1 maço de couve").\n' +
       '4. Ao final, sempre inclua: "💰 Orçamento estimado: R$ XX,XX a R$ YY,YY" — use preços realistas do mercado brasileiro atual.\n' +
       '5. Formate de forma bonita com emojis e seções claras, pronta para o WhatsApp.\n\n' +
-      '——— 2) MODO "O QUE TENHO NA GELADEIRA?" ———\n' +
+      '——— 2) MODO "O QUE TENHO NA GELADEIRA?" (Mensal e Trimestral) ———\n' +
       'Quando o paciente enviar uma FOTO da geladeira, despensa ou de ingredientes (ou pedir "o que faço com o que tenho na geladeira?", "tenho esses alimentos, o que preparo?"):\n' +
       '1. Use sua capacidade de visão (GPT-4o) para identificar TODOS os alimentos visíveis na foto.\n' +
       '2. Consulte PRIMEIRO a BIBLIOTECA DE RECEITAS do Dr. Caio abaixo e cruze: quais receitas do banco usam os ingredientes que o paciente tem?\n' +
       '3. Se 2 ou mais ingredientes de uma receita do banco batem com os identificados, sugira essa receita.\n' +
       '4. Se nenhuma receita do banco servir, use seu conhecimento geral para sugerir 3 preparações possíveis com os ingredientes identificados.\n' +
       '5. Responda SEMPRE neste formato exato:\n\n' +
-      '🍳 Com o que você tem na geladeira, eu sugero:\n\n' +
+      '🍳 Com o que você tem na geladeira, eu sugiro:\n\n' +
       '1️⃣ [Nome da Receita]\n   ⏱️ Tempo: XX min\n   📋 Ingredientes que você já tem: [lista]\n   🛒 Precisa comprar: [lista curta, ou "nada!" se já tem tudo]\n   📝 Modo de preparo resumido (3-5 passos)\n\n' +
       '2️⃣ ... (mesmo formato)\n\n' +
       '3️⃣ ... (mesmo formato)\n\n' +

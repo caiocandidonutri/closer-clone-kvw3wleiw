@@ -11,10 +11,10 @@ import { toast } from 'sonner'
 import type { SubscriptionPlanSlug } from '@/lib/types'
 
 const PLAN_LABELS: Record<SubscriptionPlanSlug, string> = {
-  free_trial: 'Free Trial · 3 dias · 20 msgs',
-  weekly: 'Semanal · R$29,90 · 7 dias',
-  monthly: 'Mensal · R$79,90 · 30 dias',
-  quarterly: 'Trimestral · R$199,90 · 90 dias',
+  free_trial: 'Free Trial · 3 dias · 5 msgs (total)',
+  weekly: 'Semanal · R$29,90 · 7 dias · 15 msgs (total)',
+  monthly: 'Mensal · R$79,90 · 30 dias · 25 msgs/dia',
+  quarterly: 'Trimestral · R$199,90 · 90 dias · 40 msgs/dia',
 }
 
 interface FormState {

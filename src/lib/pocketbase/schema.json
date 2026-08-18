@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T00:07:46.167Z",
+  "generatedAt": "2026-08-18T00:29:38.620Z",
   "collections": [
     {
       "name": "users",
@@ -806,6 +806,20 @@
           "system": false
         },
         {
+          "name": "limit_type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["total", "daily"],
+          "maxSelect": 1
+        },
+        {
+          "name": "has_all_features",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
           "name": "is_active",
           "type": "bool",
           "required": false,
@@ -830,6 +844,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "limit_type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["total", "daily"]
+        },
+        {
+          "name": "has_all_features",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_subscription_plans_slug ON subscription_plans (slug)"]
@@ -927,6 +954,12 @@
           "system": false
         },
         {
+          "name": "message_reset_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
           "name": "contact",
           "type": "relation",
           "required": false,
@@ -953,6 +986,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "message_reset_date",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

@@ -31,17 +31,28 @@ const PLAN_DURATIONS: Record<SubscriptionPlanSlug, number> = {
   quarterly: 90,
 }
 
+// Limite de mensagens conforme o plano.
+// - free_trial / weekly: limite TOTAL (não reseta)
+// - monthly / quarterly: limite DIÁRIO (reseta a cada 24h)
 const PLAN_MESSAGE_LIMITS: Record<SubscriptionPlanSlug, number> = {
-  free_trial: 20,
-  weekly: 0,
-  monthly: 0,
-  quarterly: 0,
+  free_trial: 5,
+  weekly: 15,
+  monthly: 25,
+  quarterly: 40,
+}
+
+const PLAN_IS_DAILY: Record<SubscriptionPlanSlug, boolean> = {
+  free_trial: false,
+  weekly: false,
+  monthly: true,
+  quarterly: true,
 }
 
 /** Builds subscription_start, subscription_end, message_count_limit from a plan slug. */
 export const buildSubscriptionDates = (plan: SubscriptionPlanSlug) => {
   const days = PLAN_DURATIONS[plan] || 3
   const limit = PLAN_MESSAGE_LIMITS[plan] ?? 0
+  const isDaily = PLAN_IS_DAILY[plan] ?? false
   const start = new Date()
   const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000)
   return {
@@ -49,6 +60,8 @@ export const buildSubscriptionDates = (plan: SubscriptionPlanSlug) => {
     subscription_end: end.toISOString(),
     message_count_limit: limit,
     message_count_used: 0,
+    // planos diários começam com a âncora de reset já definida
+    message_reset_date: isDaily ? start.toISOString() : '',
     registration_date: start.toISOString().slice(0, 10),
     status: plan === 'free_trial' ? 'trial' : 'active',
   }

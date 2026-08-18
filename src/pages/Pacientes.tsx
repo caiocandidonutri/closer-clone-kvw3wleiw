@@ -189,13 +189,21 @@ export default function Pacientes() {
   )
 }
 
+const PLAN_DAILY: Record<string, boolean> = {
+  monthly: true,
+  quarterly: true,
+  free_trial: false,
+  weekly: false,
+}
+
 function PatientRow({ patient, onRemove }: { patient: Patient; onRemove: () => void }) {
   const navigate = useNavigate()
   const lastInteraction = patient.updated || patient.created
-  const isTrial = patient.subscription_plan === 'free_trial'
   const limit = patient.message_count_limit || 0
   const used = patient.message_count_used || 0
-  const reachedLimit = isTrial && limit > 0 && used >= limit
+  const isDaily = PLAN_DAILY[patient.subscription_plan] ?? false
+  const hasLimit = limit > 0
+  const reachedLimit = hasLimit && used >= limit
 
   return (
     <div className="flex items-center justify-between gap-3 py-3.5 px-3 -mx-1 rounded-2xl hover:bg-muted transition-all duration-300 group">
@@ -228,9 +236,9 @@ function PatientRow({ patient, onRemove }: { patient: Patient; onRemove: () => v
         <Badge variant="outline" className="text-[11px] px-2 py-0.5 hidden sm:inline-flex">
           {PLAN_LABELS[patient.subscription_plan] || patient.subscription_plan}
         </Badge>
-        {isTrial && limit > 0 && (
+        {hasLimit && (
           <span className="text-[11px] text-muted-foreground font-semibold hidden md:inline">
-            {used}/{limit} msgs
+            {used}/{limit} {isDaily ? 'msgs/dia' : 'msgs'}
           </span>
         )}
         <Badge
