@@ -90,22 +90,22 @@ export const usePlans = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const data = await listPlans()
-        if (!cancelled) setPlans(data)
-      } catch (err) {
-        console.error('[usePlans] fetch error:', err)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+  const fetchPlans = useCallback(async () => {
+    try {
+      const data = await listPlans()
+      setPlans(data)
+      return data
+    } catch (err) {
+      console.error('[usePlans] fetch error:', err)
+      return []
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  return { plans, loading }
+  useEffect(() => {
+    fetchPlans()
+  }, [fetchPlans])
+
+  return { plans, loading, refetch: fetchPlans }
 }

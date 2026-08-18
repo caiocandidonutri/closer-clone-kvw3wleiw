@@ -6,11 +6,18 @@
 //
 // Calls the InfinitePay Checkout API:
 //   POST https://api.checkout.infinitepay.io/links
-//   Authorization: Bearer {INFINITEPAY_API_KEY}   (when the secret is set)
+//   Authorization: Bearer {INFINITEPAY_API_KEY}   (optional — the public docs
+//   do NOT require auth for link creation; only added when the secret is set)
 //
 // The link + slug are stored back on each subscription_plan record
 // (infinitepay_link / infinitepay_order_nsu). The webhook matches incoming
 // payments by order_nsu.
+//
+// Config (all optional — sensible defaults are used):
+//   INFINITEPAY_HANDLE        e.g. caio_candido_mac
+//   INFINITEPAY_WEBHOOK_URL   full public webhook URL (overrides auto-built one)
+//   INFINITEPAY_REDIRECT_URL  post-checkout redirect URL (overrides auto-built one)
+//   INFINITEPAY_API_KEY       Bearer token, only sent when present
 
 routerAdd(
   'POST',
@@ -33,15 +40,28 @@ routerAdd(
       $secrets.get('FRONTEND_URL') ||
       ''
     ).replace(/\/$/, '')
-    // Prefer the backend instance URL (the hook lives on the backend).
-    const webhookUrl = (instanceUrl || siteUrl) + '/backend/v1/webhook/infinitepay?handle=' + handle
-    const redirectUrl = (siteUrl || 'https://nutriresponde.goskip.app') + '/?paid=1'
+
+    // Allow explicit overrides (the user configured these in the InfinitePay
+    // dashboard, so we send exactly the same values to the API).
+    const explicitWebhook =
+      $os.getenv('INFINITEPAY_WEBHOOK_URL') || $secrets.get('INFINITEPAY_WEBHOOK_URL') || ''
+    const explicitRedirect =
+      $os.getenv('INFINITEPAY_REDIRECT_URL') || $secrets.get('INFINITEPAY_REDIRECT_URL') || ''
+
+    // Prefer the explicit override, then the backend instance URL, then SITE_URL.
+    const webhookUrl =
+      explicitWebhook ||
+      (instanceUrl || siteUrl) + '/backend/v1/webhook/infinitepay?handle=' + handle
+    const redirectUrl =
+      explicitRedirect || (siteUrl || 'https://nutriresponde.goskip.app') + '/?paid=1'
 
     console.log(
       '[infinitepay_create_links] handle=' +
         handle +
         ' webhookUrl=' +
         webhookUrl +
+        ' redirectUrl=' +
+        redirectUrl +
         ' apiKeyPresent=' +
         (apiKey ? true : false),
     )
@@ -50,19 +70,19 @@ routerAdd(
     const planDefs = [
       {
         slug: 'weekly',
-        name: 'Plano Semanal — Nutri Responde',
+        name: 'Plano Semanal - Nutri Responde',
         priceCents: 2990,
         nsu: 'nutri-weekly',
       },
       {
         slug: 'monthly',
-        name: 'Plano Mensal — Nutri Responde',
+        name: 'Plano Mensal - Nutri Responde',
         priceCents: 7990,
         nsu: 'nutri-monthly',
       },
       {
         slug: 'quarterly',
-        name: 'Plano Trimestral — Nutri Responde',
+        name: 'Plano Trimestral - Nutri Responde',
         priceCents: 19990,
         nsu: 'nutri-quarterly',
       },
@@ -146,11 +166,25 @@ routerAdd(
       )
 
       if (!status || status >= 400) {
+        // Build a human-friendly error so the user knows what to fix.
+        let friendly = 'InfinitePay retornou HTTP ' + status
+        if (status === 401 || status === 403) {
+          friendly =
+            'InfinitePay exige autenticação (HTTP ' +
+            status +
+            '). Defina o secret INFINITEPAY_API_KEY com o token da InfinitePay e tente novamente.'
+        } else if (status === 422) {
+          friendly =
+            'InfinitePay rejeitou os dados do link (HTTP 422). Verifique o handle "' +
+            handle +
+            '" e os preços enviados.'
+        }
         results.push({
           slug: def.slug,
           ok: false,
           http: status,
           error: respJson,
+          friendly_error: friendly,
         })
         continue
       }
@@ -166,11 +200,28 @@ routerAdd(
     }
 
     const allOk = results.every((r) => r.ok)
+
+    // If every plan failed with an auth error, surface one consolidated,
+    // actionable message at the top level (the per-plan results still carry
+    // the raw HTTP detail).
+    let topMessage = null
+    const authFailures = results.filter((r) => !r.ok && (r.http === 401 || r.http === 403))
+    if (authFailures.length > 0) {
+      topMessage =
+        'A InfinitePay recusou a criação dos links por falta de autenticação. ' +
+        'Defina o secret INFINITEPAY_API_KEY (token da InfinitePay) e execute novamente.'
+    } else if (!allOk) {
+      topMessage =
+        'Alguns links não puderam ser criados. Veja os detalhes em results[].friendly_error.'
+    }
+
     return e.json(allOk ? 200 : 502, {
       success: allOk,
       handle: handle,
       webhook_url: webhookUrl,
+      redirect_url: redirectUrl,
       api_key_configured: apiKey ? true : false,
+      message: topMessage,
       results: results,
     })
   },

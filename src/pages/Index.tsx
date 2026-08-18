@@ -22,15 +22,28 @@ import {
   ArrowRight,
   Sparkles,
 } from 'lucide-react'
+import { usePlans } from '@/hooks/use-patients'
+import { INFINITEPAY_FALLBACK_LINKS, resolveCheckoutUrl } from '@/lib/infinitepay'
+import type { SubscriptionPlanSlug } from '@/lib/types'
 
 export default function Index() {
   const { user, loading } = useAuth()
   const { t } = useLanguage()
+  const { plans: dbPlans } = usePlans()
   const [menuOpen, setMenuOpen] = useState(false)
 
   if (!loading && user) {
     return <Navigate to="/app" replace />
   }
+
+  // Map slug → API-generated InfinitePay link (with webhook configured).
+  // Falls back to the manual dashboard links only when the API link is absent.
+  const planLinks: Partial<Record<SubscriptionPlanSlug, string>> = {}
+  for (const p of dbPlans) {
+    planLinks[p.slug as SubscriptionPlanSlug] = resolveCheckoutUrl(p)
+  }
+  const linkFor = (slug: SubscriptionPlanSlug) =>
+    planLinks[slug] || INFINITEPAY_FALLBACK_LINKS[slug] || ''
 
   const navLinks = [
     { href: '#funcionalidades', label: t('nav_features') },
@@ -129,7 +142,7 @@ export default function Index() {
       period: t('pricing_weekly_period'),
       badge: t('pricing_weekly_badge'),
       cta: t('pricing_cta_weekly'),
-      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
+      href: linkFor('weekly'),
       external: true,
       features: [
         t('pricing_weekly_1'),
@@ -147,7 +160,7 @@ export default function Index() {
       period: t('pricing_monthly_period'),
       badge: t('pricing_monthly_badge'),
       cta: t('pricing_cta_monthly'),
-      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
+      href: linkFor('monthly'),
       external: true,
       features: [
         t('pricing_monthly_1'),
@@ -164,7 +177,7 @@ export default function Index() {
       period: t('pricing_quarterly_period'),
       badge: t('pricing_quarterly_badge'),
       cta: t('pricing_cta_quarterly'),
-      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
+      href: linkFor('quarterly'),
       external: true,
       features: [
         t('pricing_quarterly_1'),

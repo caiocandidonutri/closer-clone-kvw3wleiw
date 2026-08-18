@@ -1,27 +1,58 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlans } from '@/hooks/use-patients'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Check, CreditCard, Sparkles, X, ArrowRight } from 'lucide-react'
+import {
+  Loader2,
+  Check,
+  CreditCard,
+  Sparkles,
+  X,
+  ArrowRight,
+  RefreshCw,
+  AlertTriangle,
+} from 'lucide-react'
 import type { SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
+import { resolveCheckoutUrl, createInfinitePayLinks } from '@/lib/infinitepay'
+import { toast } from 'sonner'
 
 const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// Links de fallback da InfinitePay (links manuais antigos, sem webhook).
-// Quando o link é (re)criado via API, o valor fica salvo no campo
-// `infinitepay_link` do plano e tem prioridade sobre estes.
-const INFINITEPAY_FALLBACK_LINKS: Partial<Record<SubscriptionPlanSlug, string>> = {
-  weekly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
-  monthly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
-  quarterly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
-}
-
 export default function Planos() {
-  const { plans, loading } = usePlans()
+  const { plans, loading, refetch } = usePlans()
   const navigate = useNavigate()
+  const [generating, setGenerating] = useState(false)
 
   const sorted = [...plans].sort((a, b) => (a.price_brl || 0) - (b.price_brl || 0))
+
+  // Quantos links já foram gerados via API (têm infinitepay_link preenchido)?
+  const apiLinksCount = sorted.filter((p) => !!p.infinitepay_link).length
+  const paidPlansCount = sorted.filter((p) => (p.price_brl || 0) > 0).length
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    try {
+      const res = await createInfinitePayLinks()
+      await refetch()
+      if (res.success) {
+        toast.success('Links de pagamento gerados com sucesso!')
+      } else {
+        // Mensagem amigável vinda do backend (ex.: INFINITEPAY_API_KEY ausente).
+        const msg =
+          res.message || 'Não foi possível gerar todos os links. Veja os detalhes no console.'
+        toast.error(msg)
+        console.warn('[Planos] create-links result:', res)
+      }
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || 'Falha ao gerar os links'
+      toast.error(msg)
+      console.error('[Planos] create-links error:', err)
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 p-4 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-full">
@@ -33,6 +64,43 @@ export default function Planos() {
           Escolha o plano ideal para cada paciente. A lista de compras inteligente e o modo
           geladeira são exclusivos dos planos Mensal e Trimestral.
         </p>
+      </div>
+
+      {/* Geração / status dos links InfinitePay */}
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-muted/30 p-4 md:flex-row md:justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {apiLinksCount < paidPlansCount ? (
+            <>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span>
+                {apiLinksCount === 0
+                  ? 'Os links de pagamento ainda não foram gerados via API (usando links manuais sem webhook).'
+                  : `${apiLinksCount} de ${paidPlansCount} links gerados via API.`}
+              </span>
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4 text-whatsapp-green" />
+              <span>
+                Todos os {paidPlansCount} links de pagamento foram gerados via API (com webhook de
+                pagamento configurado).
+              </span>
+            </>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          className="rounded-full"
+          onClick={handleGenerate}
+          disabled={generating}
+        >
+          {generating ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          {generating ? 'Gerando...' : 'Gerar / atualizar links'}
+        </Button>
       </div>
 
       {loading ? (
@@ -63,7 +131,9 @@ function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: ()
   const isPopular = plan.slug === 'weekly'
   const benefits: string[] = Array.isArray(plan.benefits) ? plan.benefits : []
   const hasAllFeatures = !!plan.has_all_features
-  const infinitePayUrl = plan.infinitepay_link || INFINITEPAY_FALLBACK_LINKS[plan.slug]
+  const infinitePayUrl = resolveCheckoutUrl(plan)
+  // Link com webhook configurado (gerado via API) — sinalizado no card.
+  const hasApiLink = !!plan.infinitepay_link
 
   // Descrição do limite de mensagens conforme a semântica do plano.
   const limitLabel = (() => {
@@ -198,7 +268,12 @@ function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: ()
           )}
         </Button>
 
-        <Badge variant="outline" className="mt-3 self-center text-[10px]">
+        <Badge
+          variant="outline"
+          className={`mt-3 self-center text-[10px] ${
+            !isFree && !hasApiLink ? 'border-amber-400 text-amber-600' : ''
+          }`}
+        >
           {limitLabel}
         </Badge>
       </CardContent>
