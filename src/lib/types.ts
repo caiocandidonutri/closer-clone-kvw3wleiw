@@ -127,6 +127,10 @@ export interface SubscriptionPlan {
   benefits: string[]
   created: string
   updated: string
+  /** URL do checkout gerada pela InfinitePay (quando o link foi criado via API) */
+  infinitepay_link: string
+  /** order_nsu enviado para a InfinitePay ao criar o link */
+  infinitepay_order_nsu: string
 }
 
 export type PatientStatus = 'active' | 'inactive' | 'trial' | 'expired'
@@ -153,6 +157,8 @@ export interface Patient {
   invited_by: string
   created: string
   updated: string
+  /** último transaction_nsu recebido via webhook (anti-duplicação) */
+  infinitepay_transaction_nsu: string
 }
 
 export interface YasaFeedback {

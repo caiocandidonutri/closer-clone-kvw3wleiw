@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T01:56:46.736Z",
+  "generatedAt": "2026-08-18T02:23:57.648Z",
   "collections": [
     {
       "name": "users",
@@ -841,6 +841,18 @@
         {
           "name": "has_all_features",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "infinitepay_link",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "infinitepay_order_nsu",
+          "type": "text",
           "required": false,
           "system": false
         }

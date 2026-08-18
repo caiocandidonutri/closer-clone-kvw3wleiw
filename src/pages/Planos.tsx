@@ -8,8 +8,10 @@ import type { SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 
 const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// Links oficiais da InfinitePay por slug do plano.
-const INFINITEPAY_LINKS: Partial<Record<SubscriptionPlanSlug, string>> = {
+// Links de fallback da InfinitePay (links manuais antigos, sem webhook).
+// Quando o link é (re)criado via API, o valor fica salvo no campo
+// `infinitepay_link` do plano e tem prioridade sobre estes.
+const INFINITEPAY_FALLBACK_LINKS: Partial<Record<SubscriptionPlanSlug, string>> = {
   weekly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
   monthly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
   quarterly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
@@ -61,7 +63,7 @@ function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: ()
   const isPopular = plan.slug === 'weekly'
   const benefits: string[] = Array.isArray(plan.benefits) ? plan.benefits : []
   const hasAllFeatures = !!plan.has_all_features
-  const infinitePayUrl = INFINITEPAY_LINKS[plan.slug]
+  const infinitePayUrl = plan.infinitepay_link || INFINITEPAY_FALLBACK_LINKS[plan.slug]
 
   // Descrição do limite de mensagens conforme a semântica do plano.
   const limitLabel = (() => {
