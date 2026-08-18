@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T00:29:38.620Z",
+  "generatedAt": "2026-08-18T00:54:13.469Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -103,14 +108,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -146,7 +156,10 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["pending", "responded"]
+          "selectValues": [
+            "pending",
+            "responded"
+          ]
         },
         {
           "name": "avatar_url",
@@ -192,14 +205,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "meal_plan_photo",
@@ -305,7 +323,11 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["user", "assistant", "system"]
+          "selectValues": [
+            "user",
+            "assistant",
+            "system"
+          ]
         },
         {
           "name": "timestamp",
@@ -318,21 +340,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "feedback",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["useful", "not_useful"]
+          "selectValues": [
+            "useful",
+            "not_useful"
+          ]
         },
         {
           "name": "needs_human",
@@ -399,14 +429,20 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["formal", "leve"]
+          "selectValues": [
+            "formal",
+            "leve"
+          ]
         },
         {
           "name": "detail_level",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["curto", "detalhado"]
+          "selectValues": [
+            "curto",
+            "detalhado"
+          ]
         },
         {
           "name": "preferred_topics",
@@ -431,14 +467,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "gemini_api_key",
@@ -469,10 +510,16 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+          "selectValues": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_ai_agent_configs_owner ON ai_agent_configs (owner)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_ai_agent_configs_owner ON ai_agent_configs (owner)"
+      ]
     },
     {
       "name": "agent_materials",
@@ -527,14 +574,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "file",
@@ -543,7 +595,9 @@
           "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_agent_materials_owner ON agent_materials (owner)"]
+      "indexes": [
+        "CREATE INDEX idx_agent_materials_owner ON agent_materials (owner)"
+      ]
     },
     {
       "name": "meal_plan_templates",
@@ -598,14 +652,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "file",
@@ -614,7 +673,9 @@
           "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_meal_plan_templates_owner ON meal_plan_templates (owner)"]
+      "indexes": [
+        "CREATE INDEX idx_meal_plan_templates_owner ON meal_plan_templates (owner)"
+      ]
     },
     {
       "name": "yasa_feedback",
@@ -653,7 +714,10 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["useful", "not_useful"]
+          "selectValues": [
+            "useful",
+            "not_useful"
+          ]
         },
         {
           "name": "comment",
@@ -678,14 +742,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -740,14 +809,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "file",
@@ -756,7 +830,9 @@
           "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_recipes_owner ON recipes (owner)"]
+      "indexes": [
+        "CREATE INDEX idx_recipes_owner ON recipes (owner)"
+      ]
     },
     {
       "name": "subscription_plans",
@@ -806,20 +882,6 @@
           "system": false
         },
         {
-          "name": "limit_type",
-          "type": "select",
-          "required": false,
-          "system": false,
-          "selectValues": ["total", "daily"],
-          "maxSelect": 1
-        },
-        {
-          "name": "has_all_features",
-          "type": "bool",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "is_active",
           "type": "bool",
           "required": false,
@@ -836,21 +898,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "limit_type",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["total", "daily"]
+          "selectValues": [
+            "total",
+            "daily"
+          ]
         },
         {
           "name": "has_all_features",
@@ -859,7 +929,9 @@
           "system": false
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_subscription_plans_slug ON subscription_plans (slug)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_subscription_plans_slug ON subscription_plans (slug)"
+      ]
     },
     {
       "name": "patients",
@@ -920,14 +992,24 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["active", "inactive", "trial", "expired"]
+          "selectValues": [
+            "active",
+            "inactive",
+            "trial",
+            "expired"
+          ]
         },
         {
           "name": "subscription_plan",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["free_trial", "weekly", "monthly", "quarterly"]
+          "selectValues": [
+            "free_trial",
+            "weekly",
+            "monthly",
+            "quarterly"
+          ]
         },
         {
           "name": "subscription_start",
@@ -954,12 +1036,6 @@
           "system": false
         },
         {
-          "name": "message_reset_date",
-          "type": "date",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "contact",
           "type": "relation",
           "required": false,
@@ -978,14 +1054,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "message_reset_date",
