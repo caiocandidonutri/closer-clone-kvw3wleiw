@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   MessageCircle,
-  LayoutDashboard,
-  Users,
+  Camera,
+  ShoppingCart,
+  ClipboardList,
   ShieldCheck,
   Check,
   X,
@@ -72,7 +73,7 @@ export default function Index() {
       n: '02',
       title: t('how_step2_title'),
       desc: t('how_step2_desc'),
-      icon: Users,
+      icon: MessageCircle,
     },
     {
       n: '03',
@@ -89,19 +90,19 @@ export default function Index() {
       desc: t('feature_chat_desc'),
     },
     {
-      icon: LayoutDashboard,
-      title: t('feature_dashboard_title'),
-      desc: t('feature_dashboard_desc'),
+      icon: Camera,
+      title: t('feature_photo_title'),
+      desc: t('feature_photo_desc'),
     },
     {
-      icon: Users,
-      title: t('feature_patients_title'),
-      desc: t('feature_patients_desc'),
+      icon: ClipboardList,
+      title: t('feature_plan_title'),
+      desc: t('feature_plan_desc'),
     },
     {
-      icon: ShieldCheck,
-      title: t('feature_whatsapp_title'),
-      desc: t('feature_whatsapp_desc'),
+      icon: ShoppingCart,
+      title: t('feature_list_title'),
+      desc: t('feature_list_desc'),
     },
   ]
 
@@ -112,44 +113,66 @@ export default function Index() {
       period: t('pricing_trial_period'),
       badge: t('pricing_trial_badge'),
       cta: t('pricing_cta_trial'),
+      href: '/auth',
+      external: false,
       features: [
         t('pricing_trial_1'),
         t('pricing_trial_2'),
         t('pricing_trial_3'),
         t('pricing_trial_4'),
-        t('pricing_trial_5'),
       ],
       highlight: false,
     },
     {
-      name: t('pricing_essential_name'),
-      price: t('pricing_essential_price'),
-      period: t('pricing_essential_period'),
-      badge: t('pricing_essential_badge'),
-      cta: t('pricing_cta_essential'),
+      name: t('pricing_weekly_name'),
+      price: t('pricing_weekly_price'),
+      period: t('pricing_weekly_period'),
+      badge: t('pricing_weekly_badge'),
+      cta: t('pricing_cta_weekly'),
+      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
+      external: true,
       features: [
-        t('pricing_essential_1'),
-        t('pricing_essential_2'),
-        t('pricing_essential_3'),
-        t('pricing_essential_4'),
-        t('pricing_essential_5'),
-        t('pricing_essential_6'),
+        t('pricing_weekly_1'),
+        t('pricing_weekly_2'),
+        t('pricing_weekly_3'),
+        t('pricing_weekly_4'),
+        t('pricing_weekly_5'),
+        t('pricing_weekly_6'),
       ],
       highlight: true,
     },
     {
-      name: t('pricing_pro_name'),
-      price: t('pricing_pro_price'),
-      period: t('pricing_pro_period'),
-      badge: t('pricing_pro_badge'),
-      cta: t('pricing_cta_pro'),
+      name: t('pricing_monthly_name'),
+      price: t('pricing_monthly_price'),
+      period: t('pricing_monthly_period'),
+      badge: t('pricing_monthly_badge'),
+      cta: t('pricing_cta_monthly'),
+      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
+      external: true,
       features: [
-        t('pricing_pro_1'),
-        t('pricing_pro_2'),
-        t('pricing_pro_3'),
-        t('pricing_pro_4'),
-        t('pricing_pro_5'),
-        t('pricing_pro_6'),
+        t('pricing_monthly_1'),
+        t('pricing_monthly_2'),
+        t('pricing_monthly_3'),
+        t('pricing_monthly_4'),
+        t('pricing_monthly_5'),
+      ],
+      highlight: false,
+    },
+    {
+      name: t('pricing_quarterly_name'),
+      price: t('pricing_quarterly_price'),
+      period: t('pricing_quarterly_period'),
+      badge: t('pricing_quarterly_badge'),
+      cta: t('pricing_cta_quarterly'),
+      href: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
+      external: true,
+      features: [
+        t('pricing_quarterly_1'),
+        t('pricing_quarterly_2'),
+        t('pricing_quarterly_3'),
+        t('pricing_quarterly_4'),
+        t('pricing_quarterly_5'),
+        t('pricing_quarterly_6'),
       ],
       highlight: false,
     },
@@ -194,7 +217,7 @@ export default function Index() {
               asChild
               className="rounded-full bg-whatsapp-green px-5 font-semibold text-white shadow-glow transition-all hover:bg-whatsapp-green/90 hover:shadow-floating"
             >
-              <Link to="/auth">{t('access_platform')}</Link>
+              <Link to="/auth">{t('hero_cta_trial')}</Link>
             </Button>
           </div>
 
@@ -235,7 +258,7 @@ export default function Index() {
                   asChild
                   className="rounded-full bg-whatsapp-green font-semibold text-white shadow-glow"
                 >
-                  <Link to="/auth">{t('access_platform')}</Link>
+                  <Link to="/auth">{t('hero_cta_trial')}</Link>
                 </Button>
               </div>
             </nav>
@@ -485,81 +508,110 @@ export default function Index() {
                 {t('pricing_subtitle')}
               </p>
             </div>
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {plans.map((p) => (
-                <Card
-                  key={p.name}
-                  className={`relative flex flex-col rounded-3xl border p-7 shadow-subtle transition-all hover:shadow-elevation ${
-                    p.highlight
-                      ? 'border-whatsapp-green bg-whatsapp-dark text-white shadow-elevation'
-                      : 'border-border/60 bg-white'
-                  }`}
-                >
-                  {p.highlight && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-whatsapp-green px-4 py-1 text-xs font-semibold text-white shadow-glow">
-                      {t('pricing_popular')}
-                    </div>
-                  )}
-                  <span
-                    className={`text-xs font-medium ${
-                      p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-teal'
+            <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {plans.map((p) => {
+                const isExclusion = (f: string) => f.indexOf('❌') >= 0
+                const ctaInner = (
+                  <>
+                    {p.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )
+                return (
+                  <Card
+                    key={p.name}
+                    className={`relative flex flex-col rounded-3xl border p-7 shadow-subtle transition-all hover:shadow-elevation ${
+                      p.highlight
+                        ? 'border-whatsapp-green bg-whatsapp-dark text-white shadow-elevation'
+                        : 'border-border/60 bg-white'
                     }`}
                   >
-                    {p.badge}
-                  </span>
-                  <h3
-                    className={`mt-2 text-xl font-bold ${
-                      p.highlight ? 'text-white' : 'text-whatsapp-dark'
-                    }`}
-                  >
-                    {p.name}
-                  </h3>
-                  <div className="mt-4 flex items-baseline gap-1">
+                    {p.highlight && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-whatsapp-green px-4 py-1 text-xs font-semibold text-white shadow-glow">
+                        {t('pricing_popular')}
+                      </div>
+                    )}
                     <span
-                      className={`text-4xl font-extrabold ${
+                      className={`text-xs font-medium ${
+                        p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-teal'
+                      }`}
+                    >
+                      {p.badge}
+                    </span>
+                    <h3
+                      className={`mt-2 text-xl font-bold ${
                         p.highlight ? 'text-white' : 'text-whatsapp-dark'
                       }`}
                     >
-                      {p.price}
-                    </span>
-                    <span
-                      className={`text-sm ${
-                        p.highlight ? 'text-white/60' : 'text-muted-foreground'
+                      {p.name}
+                    </h3>
+                    <div className="mt-4 flex items-baseline gap-1">
+                      <span
+                        className={`text-4xl font-extrabold ${
+                          p.highlight ? 'text-white' : 'text-whatsapp-dark'
+                        }`}
+                      >
+                        {p.price}
+                      </span>
+                      <span
+                        className={`text-sm ${
+                          p.highlight ? 'text-white/60' : 'text-muted-foreground'
+                        }`}
+                      >
+                        {p.period}
+                      </span>
+                    </div>
+                    <ul className="mt-6 flex-1 space-y-3">
+                      {p.features.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2.5">
+                          {isExclusion(f) ? (
+                            <X
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                p.highlight ? 'text-white/40' : 'text-muted-foreground'
+                              }`}
+                            />
+                          ) : (
+                            <Check
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-green'
+                              }`}
+                            />
+                          )}
+                          <span
+                            className={`text-sm leading-relaxed ${
+                              isExclusion(f)
+                                ? p.highlight
+                                  ? 'text-white/50 line-through'
+                                  : 'text-muted-foreground line-through'
+                                : p.highlight
+                                  ? 'text-white/85'
+                                  : 'text-foreground/80'
+                            }`}
+                          >
+                            {f}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      asChild
+                      className={`mt-7 w-full rounded-full font-semibold transition-all ${
+                        p.highlight
+                          ? 'bg-whatsapp-green text-white shadow-glow hover:bg-whatsapp-green/90'
+                          : 'bg-whatsapp-dark text-white hover:bg-whatsapp-dark/90'
                       }`}
                     >
-                      {p.period}
-                    </span>
-                  </div>
-                  <ul className="mt-6 flex-1 space-y-3">
-                    {p.features.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2.5">
-                        <Check
-                          className={`mt-0.5 h-4 w-4 shrink-0 ${
-                            p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-green'
-                          }`}
-                        />
-                        <span
-                          className={`text-sm leading-relaxed ${
-                            p.highlight ? 'text-white/85' : 'text-foreground/80'
-                          }`}
-                        >
-                          {f}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    asChild
-                    className={`mt-7 w-full rounded-full font-semibold transition-all ${
-                      p.highlight
-                        ? 'bg-whatsapp-green text-white shadow-glow hover:bg-whatsapp-green/90'
-                        : 'bg-whatsapp-dark text-white hover:bg-whatsapp-dark/90'
-                    }`}
-                  >
-                    <Link to="/auth">{p.cta}</Link>
-                  </Button>
-                </Card>
-              ))}
+                      {p.external ? (
+                        <a href={p.href} target="_blank" rel="noopener noreferrer">
+                          {ctaInner}
+                        </a>
+                      ) : (
+                        <Link to={p.href}>{ctaInner}</Link>
+                      )}
+                    </Button>
+                  </Card>
+                )
+              })}
             </div>
             <p className="mt-8 text-center text-sm text-muted-foreground">{t('pricing_note')}</p>
           </div>

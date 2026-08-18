@@ -3,10 +3,17 @@ import { usePlans } from '@/hooks/use-patients'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Check, CreditCard, Sparkles, X } from 'lucide-react'
-import type { SubscriptionPlan } from '@/lib/types'
+import { Loader2, Check, CreditCard, Sparkles, X, ArrowRight } from 'lucide-react'
+import type { SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 
 const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// Links oficiais da InfinitePay por slug do plano.
+const INFINITEPAY_LINKS: Partial<Record<SubscriptionPlanSlug, string>> = {
+  weekly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
+  monthly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
+  quarterly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
+}
 
 export default function Planos() {
   const { plans, loading } = usePlans()
@@ -43,7 +50,7 @@ export default function Planos() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">
-        Sem fidelidade · Cancele quando quiser · Pagamento via WhatsApp
+        Sem fidelidade · Cancele quando quiser · Pagamento via InfinitePay
       </p>
     </div>
   )
@@ -51,10 +58,10 @@ export default function Planos() {
 
 function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: () => void }) {
   const isFree = (plan.price_brl || 0) === 0
-  const isPopular = plan.slug === 'monthly'
+  const isPopular = plan.slug === 'weekly'
   const benefits: string[] = Array.isArray(plan.benefits) ? plan.benefits : []
-  const isDaily = plan.limit_type === 'daily'
   const hasAllFeatures = !!plan.has_all_features
+  const infinitePayUrl = INFINITEPAY_LINKS[plan.slug]
 
   // Descrição do limite de mensagens conforme a semântica do plano.
   const limitLabel = (() => {
@@ -63,7 +70,7 @@ function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: ()
     if (plan.slug === 'weekly') return `${plan.message_limit} mensagens no total`
     if (plan.slug === 'free_trial') return `${plan.message_limit} mensagens no total`
     if (plan.message_limit > 0)
-      return isDaily
+      return plan.limit_type === 'daily'
         ? `${plan.message_limit} mensagens por dia`
         : `${plan.message_limit} mensagens no total`
     return 'Mensagens ilimitadas'
@@ -171,12 +178,22 @@ function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: ()
         </div>
 
         <Button
-          onClick={onContract}
+          asChild
           className={`rounded-full w-full ${isPopular ? 'shadow-elevation' : ''}`}
           variant={isPopular ? 'default' : 'outline'}
         >
-          <CreditCard className="mr-2 h-4 w-4" />
-          {isFree ? 'Começar grátis' : 'Contratar'}
+          {isFree ? (
+            <button onClick={onContract}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Começar grátis
+            </button>
+          ) : (
+            <a href={infinitePayUrl} target="_blank" rel="noopener noreferrer">
+              <CreditCard className="mr-2 h-4 w-4" />
+              Contratar
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </a>
+          )}
         </Button>
 
         <Badge variant="outline" className="mt-3 self-center text-[10px]">
