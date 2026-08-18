@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-17T18:11:53.903Z",
+  "generatedAt": "2026-08-18T00:07:46.167Z",
   "collections": [
     {
       "name": "users",
@@ -757,6 +757,209 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_recipes_owner ON recipes (owner)"]
+    },
+    {
+      "name": "subscription_plans",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_brl",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "duration_days",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "message_limit",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "benefits",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_subscription_plans_slug ON subscription_plans (slug)"]
+    },
+    {
+      "name": "patients",
+      "type": "base",
+      "apiRules": {
+        "list": "owner = @request.auth.id",
+        "view": "owner = @request.auth.id",
+        "create": "owner = @request.auth.id",
+        "update": "owner = @request.auth.id",
+        "delete": "owner = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "owner",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "birth_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nutritional_goal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "registration_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["active", "inactive", "trial", "expired"]
+        },
+        {
+          "name": "subscription_plan",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["free_trial", "weekly", "monthly", "quarterly"]
+        },
+        {
+          "name": "subscription_start",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subscription_end",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "message_count_used",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "message_count_limit",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contact",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contacts"
+        },
+        {
+          "name": "invited_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_patients_owner ON patients (owner)",
+        "CREATE INDEX idx_patients_status ON patients (status)",
+        "CREATE INDEX idx_patients_subscription_end ON patients (subscription_end)"
+      ]
     }
   ]
 }

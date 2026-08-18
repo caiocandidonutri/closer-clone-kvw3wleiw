@@ -111,6 +111,44 @@ export interface Recipe {
   updated: string
 }
 
+export interface SubscriptionPlan {
+  id: string
+  name: string
+  slug: string
+  description: string
+  price_brl: number
+  duration_days: number
+  message_limit: number
+  is_active: boolean
+  benefits: string[]
+  created: string
+  updated: string
+}
+
+export type PatientStatus = 'active' | 'inactive' | 'trial' | 'expired'
+export type SubscriptionPlanSlug = 'free_trial' | 'weekly' | 'monthly' | 'quarterly'
+
+export interface Patient {
+  id: string
+  owner: string
+  name: string
+  phone: string
+  email: string
+  birth_date: string
+  nutritional_goal: string
+  registration_date: string
+  status: PatientStatus
+  subscription_plan: SubscriptionPlanSlug
+  subscription_start: string
+  subscription_end: string
+  message_count_used: number
+  message_count_limit: number
+  contact: string
+  invited_by: string
+  created: string
+  updated: string
+}
+
 export interface YasaFeedback {
   id: string
   owner: string

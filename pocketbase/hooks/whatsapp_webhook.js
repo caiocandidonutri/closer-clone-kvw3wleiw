@@ -515,6 +515,101 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     )
   }
 
+  // ── Patient subscription check: enforce trial limits & expiration ──
+  // Resolve the patient record (if any) linked to this contact or phone.
+  let patient = null
+  try {
+    patient = $app.findFirstRecordByData('patients', 'contact', contactId)
+  } catch (_) {}
+  if (!patient) {
+    try {
+      patient = $app.findFirstRecordByFilter(
+        'patients',
+        'owner = {:uid} && phone = {:ph}',
+        '-created',
+        1,
+        0,
+        { uid: owner, ph: phoneNumber },
+      )
+    } catch (_) {}
+  }
+
+  let patientBlocked = false
+  if (patient) {
+    // Expire subscription if end date has passed.
+    const endStr = patient.getString('subscription_end')
+    if (endStr) {
+      const endTime = new Date(endStr).getTime()
+      if (!isNaN(endTime) && endTime < Date.now()) {
+        patient.set('status', 'expired')
+        try {
+          $app.save(patient)
+        } catch (_) {}
+        patientBlocked = true
+      }
+    }
+    // Trial message limit.
+    if (!patientBlocked) {
+      const plan = patient.getString('subscription_plan')
+      const used = patient.get('message_count_used') || 0
+      let limit = patient.get('message_count_limit')
+      // If limit not set on the record, derive from the plan.
+      if ((limit === null || limit === '' || typeof limit !== 'number') && plan === 'free_trial') {
+        limit = 20
+      }
+      if (limit === null || limit === '' || typeof limit !== 'number') {
+        limit = 0 // 0 = unlimited
+      }
+      if (limit > 0 && used >= limit) {
+        patientBlocked = true
+      }
+    }
+  }
+
+  // If blocked, send the upgrade/expired message and stop (do not call the AI).
+  if (patientBlocked) {
+    const appUrl = (
+      $secrets.get('SITE_URL') ||
+      $secrets.get('APP_PUBLIC_URL') ||
+      $secrets.get('FRONTEND_URL') ||
+      ''
+    ).replace(/\/$/, '')
+    const upgradeLink = appUrl ? appUrl + '/app/planos' : 'https://nutriresponde.app/app/planos'
+    const blockText =
+      'Seu período de teste chegou ao fim! 🌿\n\n' +
+      'Para continuar recebendo orientações personalizadas da Yasa, escolha seu plano de assinatura:\n' +
+      upgradeLink
+
+    // Persist the block message as the assistant reply.
+    try {
+      const msgCol = $app.findCollectionByNameOrId('messages')
+      const aiMsg = new Record(msgCol)
+      aiMsg.set('contact', contactId)
+      aiMsg.set('content', blockText)
+      aiMsg.set('role', 'assistant')
+      aiMsg.set('timestamp', new Date().toISOString())
+      $app.save(aiMsg)
+      contact.set('last_message', blockText)
+      contact.set('status', 'responded')
+      contact.set('last_message_from_me', true)
+      contact.set('last_message_at', new Date().toISOString())
+      $app.save(contact)
+    } catch (_) {}
+
+    if (!isLid && evoUrl && evoKey && instanceName) {
+      try {
+        $http.send({
+          url: evoUrl + '/message/sendText/' + instanceName,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: evoKey },
+          body: JSON.stringify({ number: phoneNumber, text: blockText }),
+          timeout: 30,
+        })
+      } catch (_) {}
+    }
+    return e.json(200, { ok: true, skipped: 'patient_blocked', contact_id: contactId })
+  }
+
   // ── Build the nutrition system prompt (kept in sync with yasa_chat.js) ──
   const systemPrompt = (() => {
     const base =
@@ -655,13 +750,37 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     }
 
     extra +=
+      '\n\n═══ CAPACIDADES ESPECIAIS (NOVAS) ═══\n' +
+      'Você tem duas capacidades especiais além do atendimento nutricional normal. Identifique a intenção do paciente e ative quando ele pedir.\n\n' +
+      '——— 1) LISTA DE COMPRAS INTELIGENTE ———\n' +
+      'Quando o paciente pedir "lista de compras", "montar lista do mercado", "o que comprar essa semana", "lista de supermercado", ou similar:\n' +
+      '1. Consulte o plano alimentar ativo do paciente (nos MODELOS DE PLANOS ALIMENTARES abaixo ou no contexto da conversa).\n' +
+      '2. Monte uma lista organizada por corredor de supermercado brasileiro, usando exatamente estas seções com seus emojis:\n' +
+      '   🥩 Carnes e Proteínas\n   🥬 Hortifruti\n   🥛 Laticínios\n   🌾 Grãos e Cereais\n   🧂 Temperos e Condimentos\n   🛒 Outros\n' +
+      '3. Para cada item, inclua uma quantidade estimada para a semana (ex.: "2 kg de peito de frango", "1 maço de couve").\n' +
+      '4. Ao final, sempre inclua: "💰 Orçamento estimado: R$ XX,XX a R$ YY,YY" — use preços realistas do mercado brasileiro atual.\n' +
+      '5. Formate de forma bonita com emojis e seções claras, pronta para o WhatsApp.\n\n' +
+      '——— 2) MODO "O QUE TENHO NA GELADEIRA?" ———\n' +
+      'Quando o paciente enviar uma FOTO da geladeira, despensa ou de ingredientes (ou pedir "o que faço com o que tenho na geladeira?", "tenho esses alimentos, o que preparo?"):\n' +
+      '1. Use sua capacidade de visão (GPT-4o) para identificar TODOS os alimentos visíveis na foto.\n' +
+      '2. Consulte PRIMEIRO a BIBLIOTECA DE RECEITAS do Dr. Caio abaixo e cruze: quais receitas do banco usam os ingredientes que o paciente tem?\n' +
+      '3. Se 2 ou mais ingredientes de uma receita do banco batem com os identificados, sugira essa receita.\n' +
+      '4. Se nenhuma receita do banco servir, use seu conhecimento geral para sugerir 3 preparações possíveis com os ingredientes identificados.\n' +
+      '5. Responda SEMPRE neste formato exato:\n\n' +
+      '🍳 Com o que você tem na geladeira, eu sugero:\n\n' +
+      '1️⃣ [Nome da Receita]\n   ⏱️ Tempo: XX min\n   📋 Ingredientes que você já tem: [lista]\n   🛒 Precisa comprar: [lista curta, ou "nada!" se já tem tudo]\n   📝 Modo de preparo resumido (3-5 passos)\n\n' +
+      '2️⃣ ... (mesmo formato)\n\n' +
+      '3️⃣ ... (mesmo formato)\n\n' +
+      '💡 Dica do Dr. Caio: [dica nutricional personalizada baseada nos alimentos identificados]\n\n' +
+      'Sempre inclua a "💡 Dica do Dr. Caio" ao final, com uma orientação nutricional útil relacionada aos ingredientes.'
+
+    extra +=
       '\n═══ ENVIO DE DOCUMENTOS ═══\n' +
       'Quando você julgar que enviar um PDF da biblioteca (receita, modelo de plano ou material) ajudaria o paciente, responda com uma linha no formato exato:\n' +
       'ENVIAR_DOCUMENTO: <collection>|<recordId>\n' +
       'Onde <collection> é "recipes", "meal_plan_templates" ou "agent_materials". Coloque essa linha no final da resposta. O sistema anexará o arquivo automaticamente.'
     return base + extra
   })()
-
   // ── Recent conversation history (last 12, chronological) ──
   const history = (() => {
     const out = []
@@ -831,6 +950,15 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       $app.save(contact)
     } catch (_) {}
   } catch (_) {}
+
+  // ── Increment the patient's message counter (for trial limits) ──
+  if (patient) {
+    try {
+      const cur = patient.get('message_count_used') || 0
+      patient.set('message_count_used', cur + 1)
+      $app.save(patient)
+    } catch (_) {}
+  }
 
   // ── Send the reply back to the contact via Evolution ──
   if (!isLid && evoUrl && evoKey && instanceName) {

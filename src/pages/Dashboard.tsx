@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react'
 import { getContacts, Contact } from '@/services/contacts'
+import { listPatients } from '@/services/patients'
+import type { Patient } from '@/lib/types'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useLanguage } from '@/hooks/use-language'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Users, Clock, CheckCircle, Loader2, ArrowRight } from 'lucide-react'
+import {
+  Users,
+  Clock,
+  CheckCircle,
+  Loader2,
+  ArrowRight,
+  UserPlus,
+  AlertCircle,
+  TrendingUp,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -15,13 +26,18 @@ export default function Dashboard() {
   const { t } = useLanguage()
   const dateLocale = ptBR
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   const load = async () => {
     try {
-      const data = await getContacts()
+      const [data, pats] = await Promise.all([
+        getContacts(),
+        listPatients().catch(() => [] as Patient[]),
+      ])
       setContacts(data)
+      setPatients(pats)
     } catch (err) {
       console.error('[Dashboard] fetch error:', err)
     } finally {
@@ -34,6 +50,9 @@ export default function Dashboard() {
   }, [])
 
   useRealtime('contacts', () => {
+    load()
+  })
+  useRealtime('patients', () => {
     load()
   })
 
@@ -49,6 +68,13 @@ export default function Dashboard() {
       : avgWaitSeconds >= 3600
         ? `${Math.round(avgWaitSeconds / 3600)}h`
         : `${Math.round(avgWaitSeconds / 60)}m`
+
+  // Patient panel stats
+  const activePatients = patients.filter((p) => p.status === 'active').length
+  const expiredPatients = patients.filter((p) => p.status === 'expired').length
+  const trialPatients = patients.filter((p) => p.status === 'trial').length
+  const engaged = patients.filter((p) => (p.message_count_used || 0) > 0).length
+  const engagementRate = patients.length ? Math.round((engaged / patients.length) * 100) : 0
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 p-6 md:p-12 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple bg-background min-h-full">
@@ -103,6 +129,79 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Patient panel */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <UserPlus className="h-6 w-6 text-primary" />
+            Pacientes
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full text-muted-foreground hover:text-foreground"
+            onClick={() => navigate('/app/pacientes')}
+          >
+            Ver todos
+            <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          <Card>
+            <CardContent className="p-4 md:p-5 flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
+                  Ativos
+                </span>
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </div>
+              <span className="text-3xl font-bold tracking-tighter text-foreground">
+                {loading ? '-' : activePatients}
+              </span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 md:p-5 flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
+                  Inadimplentes
+                </span>
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              </div>
+              <span className="text-3xl font-bold tracking-tighter text-foreground">
+                {loading ? '-' : expiredPatients}
+              </span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 md:p-5 flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
+                  Em Trial
+                </span>
+                <Clock className="h-4 w-4 text-blue-600" />
+              </div>
+              <span className="text-3xl font-bold tracking-tighter text-foreground">
+                {loading ? '-' : trialPatients}
+              </span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 md:p-5 flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
+                  Engajamento
+                </span>
+                <TrendingUp className="h-4 w-4 text-primary" />
+              </div>
+              <span className="text-3xl font-bold tracking-tighter text-foreground">
+                {loading ? '-' : engagementRate}%
+              </span>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <div className="pb-8">

@@ -485,6 +485,9 @@ export const translations = {
     batch_errors: '{count} arquivo(s) falharam',
     batch_file_success: 'Enviado',
     batch_file_error: 'Falhou',
+
+    patients_nav: 'Pacientes',
+    plans_nav: 'Planos',
   },
   pt: {
     sign_in: 'Entrar',
@@ -972,5 +975,8 @@ export const translations = {
     batch_errors: '{count} arquivo(s) falharam',
     batch_file_success: 'Enviado',
     batch_file_error: 'Falhou',
+
+    patients_nav: 'Pacientes',
+    plans_nav: 'Planos',
   },
 }
