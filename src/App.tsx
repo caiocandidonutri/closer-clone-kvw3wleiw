@@ -21,6 +21,7 @@ import Recipes from './pages/Recipes'
 import Pacientes from './pages/Pacientes'
 import PacienteNovo from './pages/PacienteNovo'
 import Planos from './pages/Planos'
+import Notifications from './pages/Notifications'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -63,6 +64,7 @@ const App = () => (
                 <Route path="pacientes" element={<Pacientes />} />
                 <Route path="pacientes/novo" element={<PacienteNovo />} />
                 <Route path="planos" element={<Planos />} />
+                <Route path="notifications" element={<Notifications />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
 

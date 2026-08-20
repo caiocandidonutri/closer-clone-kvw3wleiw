@@ -10,6 +10,7 @@ import {
   MessageCircle,
   UserPlus,
   CreditCard,
+  Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +25,7 @@ export function Sidebar() {
     { name: t('recipes_nav'), path: '/app/recipes', icon: ChefHat },
     { name: t('patients_nav'), path: '/app/pacientes', icon: UserPlus },
     { name: t('plans_nav'), path: '/app/planos', icon: CreditCard },
+    { name: 'Notificações', path: '/app/notifications', icon: Bell },
     { name: t('contacts_nav'), path: '/app/contacts', icon: Users },
     { name: t('settings_nav'), path: '/app/settings', icon: SettingsIcon },
   ]

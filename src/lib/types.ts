@@ -174,3 +174,56 @@ export interface YasaFeedback {
   created: string
   updated: string
 }
+
+export interface RevenueExpiringPatient {
+  id: string
+  name: string
+  phone: string
+  email: string
+  plan: string
+  subscription_end: string
+  days_left: number
+  status: string
+}
+
+export interface RevenueOverduePatient {
+  id: string
+  name: string
+  phone: string
+  email: string
+  plan: string
+  subscription_end: string
+  days_overdue: number
+  status: string
+}
+
+export interface PlanDistribution {
+  free: number
+  weekly: number
+  monthly: number
+  quarterly: number
+}
+
+export interface RevenueMetrics {
+  mrr: number
+  total_revenue: number
+  active_plans: number
+  expiring_soon: RevenueExpiringPatient[]
+  plan_distribution: PlanDistribution
+  overdue: RevenueOverduePatient[]
+}
+
+export type NotificationType = 'limit_80' | 'expiring_soon' | 'inactivity_48h' | 'general'
+
+export interface AppNotification {
+  id: string
+  owner: string
+  patient_id?: string
+  type: NotificationType
+  title: string
+  message: string
+  read: boolean
+  metadata?: Record<string, any>
+  created: string
+  updated: string
+}

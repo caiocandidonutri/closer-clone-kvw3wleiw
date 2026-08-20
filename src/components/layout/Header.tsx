@@ -2,6 +2,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useIntegration } from '@/hooks/use-integration'
 import { useLanguage } from '@/hooks/use-language'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
+        <NotificationBell />
         <LanguageSwitcher />
         <DropdownMenu>
           <DropdownMenuTrigger className="outline-none">
