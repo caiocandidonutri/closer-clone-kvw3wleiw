@@ -828,22 +828,22 @@ export default function Index() {
                   <div className="flex -space-x-2 overflow-hidden">
                     <img
                       className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://img.usecurling.com/ppl/128?gender=female&seed=42"
+                      src="https://randomuser.me/api/portraits/women/44.jpg"
                       alt="Paciente"
                     />
                     <img
                       className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://img.usecurling.com/ppl/128?gender=male&seed=15"
+                      src="https://randomuser.me/api/portraits/women/68.jpg"
                       alt="Paciente"
                     />
                     <img
                       className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://img.usecurling.com/ppl/128?gender=female&seed=99"
+                      src="https://randomuser.me/api/portraits/women/33.jpg"
                       alt="Paciente"
                     />
                     <img
                       className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://img.usecurling.com/ppl/128?gender=male&seed=84"
+                      src="https://randomuser.me/api/portraits/women/17.jpg"
                       alt="Paciente"
                     />
                   </div>
@@ -874,7 +874,7 @@ export default function Index() {
                 <div className="rounded-2xl bg-emerald-950/80 border border-emerald-800/50 p-5 space-y-2 sm:col-span-2">
                   <div className="flex items-center gap-3">
                     <img
-                      src="https://img.usecurling.com/ppl/128?gender=female&seed=33"
+                      src="https://randomuser.me/api/portraits/women/55.jpg"
                       alt="Juliana M."
                       className="w-9 h-9 rounded-full object-cover"
                     />

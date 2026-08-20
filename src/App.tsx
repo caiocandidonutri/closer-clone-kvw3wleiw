@@ -20,8 +20,15 @@ import YasaAgent from './pages/YasaAgent'
 import Recipes from './pages/Recipes'
 import Pacientes from './pages/Pacientes'
 import PacienteNovo from './pages/PacienteNovo'
+import PacienteEditar from './pages/PacienteEditar'
 import Planos from './pages/Planos'
 import Notifications from './pages/Notifications'
+import { useParams } from 'react-router-dom'
+
+function RedirectConversas() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/app/conversas/${id || ''}`} replace />
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -42,6 +49,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="planos" element={<Navigate to="/#planos" replace />} />
+                <Route path="conversas/:id" element={<RedirectConversas />} />
               </Route>
 
               <Route path="/onboarding" element={<Navigate to="/app/onboarding" replace />} />
@@ -63,6 +71,7 @@ const App = () => (
                 <Route path="recipes" element={<Recipes />} />
                 <Route path="pacientes" element={<Pacientes />} />
                 <Route path="pacientes/novo" element={<PacienteNovo />} />
+                <Route path="pacientes/:id" element={<PacienteEditar />} />
                 <Route path="planos" element={<Planos />} />
                 <Route path="notifications" element={<Notifications />} />
                 <Route path="settings" element={<Settings />} />

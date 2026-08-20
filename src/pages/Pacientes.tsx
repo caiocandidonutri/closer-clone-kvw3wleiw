@@ -13,8 +13,9 @@ import {
   Loader2,
   Search,
   Phone,
+  Pencil,
   Trash2,
-  RefreshCw,
+  Unlock,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -48,7 +49,7 @@ const PLAN_LABELS: Record<string, string> = {
 }
 
 export default function Pacientes() {
-  const { patients, loading, remove, refetch } = usePatients()
+  const { patients, loading, remove, releaseMessages, refetch } = usePatients()
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
@@ -181,7 +182,12 @@ export default function Pacientes() {
           ) : (
             <div className="space-y-2">
               {filtered.map((p) => (
-                <PatientRow key={p.id} patient={p} onRemove={() => remove(p.id)} />
+                <PatientRow
+                  key={p.id}
+                  patient={p}
+                  onRemove={() => remove(p.id)}
+                  onRelease={() => releaseMessages(p.id, 5)}
+                />
               ))}
             </div>
           )}
@@ -198,7 +204,15 @@ const PLAN_DAILY: Record<string, boolean> = {
   weekly: false,
 }
 
-function PatientRow({ patient, onRemove }: { patient: Patient; onRemove: () => void }) {
+function PatientRow({
+  patient,
+  onRemove,
+  onRelease,
+}: {
+  patient: Patient
+  onRemove: () => void
+  onRelease: () => void
+}) {
   const navigate = useNavigate()
   const lastInteraction = patient.updated || patient.created
   const limit = patient.message_count_limit || 0
@@ -243,17 +257,56 @@ function PatientRow({ patient, onRemove }: { patient: Patient; onRemove: () => v
             {used}/{limit} {isDaily ? 'msgs/dia' : 'msgs'}
           </span>
         )}
-        <Badge
+        {reachedLimit ? (
+          <Badge
+            variant="outline"
+            className="text-[11px] px-2 py-0.5 bg-red-100/80 text-red-700 border-red-300 flex items-center gap-1 font-semibold"
+          >
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            Limite Atingido
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className={`text-[11px] px-2 py-0.5 ${STATUS_BADGES[patient.status] || ''}`}
+          >
+            {STATUS_LABELS[patient.status] || patient.status}
+          </Badge>
+        )}
+        <Button
           variant="outline"
-          className={`text-[11px] px-2 py-0.5 ${STATUS_BADGES[patient.status]}`}
+          size="sm"
+          className="h-8 px-2.5 text-xs text-primary border-primary/20 hover:bg-primary/10 hidden sm:inline-flex items-center gap-1 rounded-full"
+          onClick={onRelease}
+          title="Liberar +5 mensagens"
         >
-          {reachedLimit ? 'Limite atingido' : STATUS_LABELS[patient.status]}
-        </Badge>
+          <Unlock className="h-3.5 w-3.5" />
+          <span>Liberar +5</span>
+        </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+          className="rounded-full h-8 w-8 sm:hidden text-primary hover:bg-primary/10"
+          onClick={onRelease}
+          title="Liberar +5 mensagens"
+        >
+          <Unlock className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+          onClick={() => navigate(`/app/pacientes/${patient.id}`)}
+          title="Editar paciente"
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
           onClick={onRemove}
+          title="Excluir paciente"
         >
           <Trash2 className="h-4 w-4" />
         </Button>

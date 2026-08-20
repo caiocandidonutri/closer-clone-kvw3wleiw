@@ -2,10 +2,12 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Patient, SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 import {
   listPatients,
+  getPatient,
   createPatient,
   updatePatient,
   deletePatient,
   renewPatient,
+  releasePatientMessages,
   listPlans,
   CreatePatientInput,
 } from '@/services/patients'
@@ -83,7 +85,35 @@ export const usePatients = () => {
     }
   }
 
-  return { patients, loading, create, update, remove, renew, refetch: fetchPatients }
+  const releaseMessages = async (id: string, bonusAmount = 5) => {
+    try {
+      const p = await releasePatientMessages(id, bonusAmount)
+      setPatients((prev) => prev.map((x) => (x.id === id ? p : x)))
+      toast.success(`+${bonusAmount} mensagens liberadas para o paciente!`)
+      return p
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao liberar mensagens')
+      throw err
+    }
+  }
+
+  const getById = async (id: string) => {
+    const cached = patients.find((p) => p.id === id)
+    if (cached) return cached
+    return await getPatient(id)
+  }
+
+  return {
+    patients,
+    loading,
+    create,
+    update,
+    remove,
+    renew,
+    releaseMessages,
+    getById,
+    refetch: fetchPatients,
+  }
 }
 
 export const usePlans = () => {

@@ -151,6 +151,7 @@ export interface Patient {
   subscription_expires_at?: string
   message_count_used: number
   message_count_limit: number
+  message_count_bonus?: number
   message_reset_date?: string
   auto_messages_enabled?: boolean
   total_messages?: number

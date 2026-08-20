@@ -128,6 +128,17 @@ export async function renewPatient(id: string, planSlug: string): Promise<Patien
   })
 }
 
+export async function releasePatientMessages(id: string, bonusAmount = 5): Promise<Patient> {
+  const current = await getPatient(id)
+  const currentLimit = current?.message_count_limit || 0
+  const currentBonus = (current as any)?.message_count_bonus || 0
+  return updatePatient(id, {
+    message_count_used: 0,
+    message_count_limit: currentLimit + bonusAmount,
+    message_count_bonus: currentBonus + bonusAmount,
+  } as any)
+}
+
 export async function registerPatient(data: {
   name: string
   phone: string
