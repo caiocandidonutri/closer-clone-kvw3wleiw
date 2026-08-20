@@ -70,7 +70,11 @@ migrate(
           addTag('perda de peso')
           addTag('dieta')
         }
-        if (t.indexOf('massa') !== -1 || t.indexOf('muscular') !== -1 || t.indexOf('hipertrofia') !== -1) {
+        if (
+          t.indexOf('massa') !== -1 ||
+          t.indexOf('muscular') !== -1 ||
+          t.indexOf('hipertrofia') !== -1
+        ) {
           addTag('hipertrofia')
           addTag('massa muscular')
           addTag('ganho de peso')
@@ -91,12 +95,20 @@ migrate(
           addTag('intestinal')
           addTag('fibras')
         }
-        if (t.indexOf('cirurgic') !== -1 || t.indexOf('cirúrgic') !== -1 || t.indexOf('operat') !== -1) {
+        if (
+          t.indexOf('cirurgic') !== -1 ||
+          t.indexOf('cirúrgic') !== -1 ||
+          t.indexOf('operat') !== -1
+        ) {
           addTag('pós-operatório')
           addTag('recuperação')
           addTag('cicatrização')
         }
-        if (t.indexOf('simples') !== -1 || t.indexOf('pratico') !== -1 || t.indexOf('prático') !== -1) {
+        if (
+          t.indexOf('simples') !== -1 ||
+          t.indexOf('pratico') !== -1 ||
+          t.indexOf('prático') !== -1
+        ) {
           addTag('simples')
           addTag('prático')
           addTag('dia a dia')
@@ -155,7 +167,10 @@ migrate(
         title: '_E-book Diferentes formas de preparar seus ovos Dr. Caio Candido',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('_E-book Diferentes formas de preparar seus ovos Dr. Caio Candido', 'recipe'),
+        tags: extractTags(
+          '_E-book Diferentes formas de preparar seus ovos Dr. Caio Candido',
+          'recipe',
+        ),
         description: 'E-book com receitas e formas variadas de preparar ovos',
       },
       {
@@ -176,10 +191,14 @@ migrate(
       },
       {
         id: 't5kp4h3thy6sim5',
-        title: 'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista .pdf.pd_20260730_191950_0000',
+        title:
+          'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista .pdf.pd_20260730_191950_0000',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista', 'recipe'),
+        tags: extractTags(
+          'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista',
+          'recipe',
+        ),
         description: 'E-book com receitas proteicas práticas utilizando whey protein',
       },
       {
@@ -187,7 +206,10 @@ migrate(
         title: 'Como organizar sua geladeira - Dr. Caio Candido Nutricionista_20260730_202054_0000',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('Como organizar sua geladeira - Dr. Caio Candido Nutricionista', 'recipe'),
+        tags: extractTags(
+          'Como organizar sua geladeira - Dr. Caio Candido Nutricionista',
+          'recipe',
+        ),
         description: 'Guia prático de organização e conservação de alimentos na geladeira',
       },
       {
@@ -200,18 +222,26 @@ migrate(
       },
       {
         id: 'upvroxsy97uf0h5',
-        title: 'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista .pdf.pd_20260730_191950_0000 (2)',
+        title:
+          'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista .pdf.pd_20260730_191950_0000 (2)',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista', 'recipe'),
+        tags: extractTags(
+          'E-book - Receitas com whey protein - Dr. Caio Candido Nutricionista',
+          'recipe',
+        ),
         description: 'E-book com receitas utilizando whey protein por Dr. Caio Cândido',
       },
       {
         id: 'nvi0ys19j89nt5z',
-        title: 'Como organizar sua geladeira - Dr. Caio Candido Nutricionista_20260730_202054_0000 (2)',
+        title:
+          'Como organizar sua geladeira - Dr. Caio Candido Nutricionista_20260730_202054_0000 (2)',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('Como organizar sua geladeira - Dr. Caio Candido Nutricionista', 'recipe'),
+        tags: extractTags(
+          'Como organizar sua geladeira - Dr. Caio Candido Nutricionista',
+          'recipe',
+        ),
         description: 'Guia de organização da geladeira e preservação de nutrientes',
       },
       {
@@ -301,7 +331,10 @@ migrate(
         title: 'Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato (3)',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato', 'meal_plan'),
+        tags: extractTags(
+          'Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato',
+          'meal_plan',
+        ),
         description: 'Plano alimentar focado em hipertrofia e ganho de massa muscular',
       },
       {
@@ -413,7 +446,10 @@ migrate(
         title: 'Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato (1) (1)',
         owner: '3zyy01r8a6a6kuw',
         is_active: true,
-        tags: extractTags('Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato', 'meal_plan'),
+        tags: extractTags(
+          'Plano-Alimentar-Ganho-de-Massa-Muscular-Cristiano-Cassilato',
+          'meal_plan',
+        ),
         description: 'Plano para ganho de massa muscular com alta ingestão de proteínas',
       },
       {
@@ -548,7 +584,12 @@ migrate(
   },
   (app) => {
     try {
-      app.db().newQuery("DELETE FROM agent_materials WHERE source_collection IN ('recipes', 'meal_plan_templates')").execute()
+      app
+        .db()
+        .newQuery(
+          "DELETE FROM agent_materials WHERE source_collection IN ('recipes', 'meal_plan_templates')",
+        )
+        .execute()
     } catch (_) {}
-  }
+  },
 )
