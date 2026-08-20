@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T03:15:25.690Z",
+  "generatedAt": "2026-08-20T03:19:20.209Z",
   "collections": [
     {
       "name": "users",
@@ -1034,6 +1034,84 @@
         "CREATE INDEX idx_patients_owner ON patients (owner)",
         "CREATE INDEX idx_patients_status ON patients (status)",
         "CREATE INDEX idx_patients_subscription_end ON patients (subscription_end)"
+      ]
+    },
+    {
+      "name": "notifications",
+      "type": "base",
+      "apiRules": {
+        "list": "owner = @request.auth.id",
+        "view": "owner = @request.auth.id",
+        "create": "owner = @request.auth.id",
+        "update": "owner = @request.auth.id",
+        "delete": "owner = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "owner",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "patient_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "patients"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["limit_80", "expiring_soon", "inactivity_48h", "general"]
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "read",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notifications_owner ON notifications (owner)",
+        "CREATE INDEX idx_notifications_patient ON notifications (patient_id)",
+        "CREATE INDEX idx_notifications_read ON notifications (read)",
+        "CREATE INDEX idx_notifications_created ON notifications (created DESC)"
       ]
     }
   ]
