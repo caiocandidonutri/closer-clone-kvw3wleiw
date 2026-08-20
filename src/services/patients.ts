@@ -73,6 +73,38 @@ export const listPatients = async (): Promise<Patient[]> =>
 export const getPatient = async (id: string): Promise<Patient> =>
   (await pb.collection('patients').getOne(id)) as unknown as Patient
 
+export interface RegisterPatientInput {
+  name: string
+  phone: string
+  email?: string
+  nutritional_goal?: string
+  subscription_plan: SubscriptionPlanSlug
+}
+
+export interface RegisterPatientResponse {
+  success: boolean
+  patient?: {
+    id: string
+    name: string
+    phone: string
+    subscription_plan: string
+    status: string
+    subscription_end: string
+  }
+  message_sent?: boolean
+  error?: string
+}
+
+/** Public onboarding endpoint for patients (does not require professional auth session). */
+export const registerPatient = async (
+  input: RegisterPatientInput,
+): Promise<RegisterPatientResponse> => {
+  return await pb.send<RegisterPatientResponse>('/backend/v1/patients/register', {
+    method: 'POST',
+    body: input,
+  })
+}
+
 export const createPatient = async (input: CreatePatientInput): Promise<Patient> => {
   const ownerId = pb.authStore.model?.id
   if (!ownerId) throw new Error('Usuário não autenticado')

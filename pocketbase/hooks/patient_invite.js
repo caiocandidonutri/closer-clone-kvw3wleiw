@@ -42,21 +42,11 @@ onRecordAfterCreateSuccess((e) => {
     return
   }
 
-  // Build the invite link (frontend public URL from secret, fallback to app origin).
-  const appUrl = (
-    $secrets.get('SITE_URL') ||
-    $secrets.get('APP_PUBLIC_URL') ||
-    $secrets.get('FRONTEND_URL') ||
-    ''
-  ).replace(/\/$/, '')
-  const inviteLink = appUrl ? appUrl + '/?invite=' + p.id : 'https://nutriresponde.app'
-
   const text =
     'Olá ' +
     name +
-    '! O Dr. Caio Cândido te convidou para o Nutri Responde. ' +
-    'Clique aqui para começar: ' +
-    inviteLink
+    '! 🎉 O Dr. Caio Cândido te dá as boas-vindas ao Nutri Responde! ' +
+    'Sua assistente Yasa já está pronta para te ajudar. Que tal começar me contando qual é o seu principal objetivo? 💚'
 
   try {
     $http.send({

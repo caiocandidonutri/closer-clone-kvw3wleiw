@@ -67,9 +67,8 @@ export default function PacienteNovo() {
   }
 
   const previewText = form.name
-    ? `Olá ${form.name}! O Dr. Caio Cândido te convidou para o Nutri Responde. Clique aqui para começar: [link]`
-    : 'Olá [nome]! O Dr. Caio Cândido te convidou para o Nutri Responde. Clique aqui para começar: [link]'
-
+    ? `Olá ${form.name}! 🎉 O Dr. Caio Cândido te dá as boas-vindas ao Nutri Responde! Sua assistente Yasa já está pronta para te ajudar. Que tal começar me contando qual é o seu principal objetivo? 💚`
+    : 'Olá [nome]! 🎉 O Dr. Caio Cândido te dá as boas-vindas ao Nutri Responde! Sua assistente Yasa já está pronta para te ajudar. Que tal começar me contando qual é o seu principal objetivo? 💚'
   return (
     <div className="max-w-3xl mx-auto space-y-8 p-4 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-full">
       <div className="flex items-center gap-3">

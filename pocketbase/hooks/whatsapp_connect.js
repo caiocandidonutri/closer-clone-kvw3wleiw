@@ -47,6 +47,31 @@ routerAdd(
         webhookUrl,
     )
 
+    // 0. Check if there is ALREADY an active CONNECTED instance for this owner.
+    // If one exists and is currently open/connected, return it instead of creating/connecting another.
+    try {
+      const activeInteg = $app.findFirstRecordByFilter(
+        'integrations',
+        "owner = {:uid} && status = 'CONNECTED' && id != {:currId}",
+        { uid: userId, currId: integrationId },
+      )
+      if (activeInteg) {
+        console.log(
+          '[whatsapp_connect] found existing CONNECTED integration ' +
+            activeInteg.id +
+            ' (' +
+            activeInteg.getString('instance_name') +
+            ') — returning it',
+        )
+        return e.json(200, {
+          status: 'CONNECTED',
+          base64: null,
+          integrationId: activeInteg.id,
+          instanceName: activeInteg.getString('instance_name'),
+        })
+      }
+    } catch (_) {}
+
     // 1. Check current connection state
     const stateRes = $http.send({
       url: evoUrl + '/instance/connectionState/' + instanceName,
@@ -62,9 +87,12 @@ routerAdd(
         (stateRes.body || '').toString().slice(0, 500),
     )
 
-    var instanceExisted = false
-    if (stateRes.statusCode === 200) {
-      instanceExisted = true
+    // Rule:
+    // - If connectionState returns 200 (instance exists) -> SKIP creation totally, configure webhook and connect
+    // - Only create NEW instance if connectionState returns 404 (not found)
+    var instanceExisted = stateRes.statusCode === 200
+
+    if (instanceExisted) {
       let stateData = {}
       try {
         stateData = stateRes.json || {}
@@ -80,14 +108,13 @@ routerAdd(
       console.log(
         '[whatsapp_connect] instance exists (state=' +
           (st || '(unknown)') +
-          ') — skipping create, going straight to webhook/connect',
+          ') — skipping create entirely, going straight to webhook/connect',
       )
     }
 
-    // 2. Create instance (409 = already exists, which is fine)
-    //    Only run if the instance does NOT already exist (connectionState was not 200).
+    // 2. Create instance ONLY if instance does NOT exist (e.g. 404)
     var createRes = null
-    if (!instanceExisted) {
+    if (!instanceExisted && stateRes.statusCode === 404) {
       createRes = $http.send({
         url: evoUrl + '/instance/create',
         method: 'POST',

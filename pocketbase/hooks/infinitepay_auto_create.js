@@ -86,13 +86,13 @@ cronAdd('infinitepay_auto_create', '*/30 * * * *', () => {
       $app.save(planRec)
     }
 
-    // NOTE: InfinitePay uses `itens` (Portuguese), not `items`.
+    // NOTE: InfinitePay uses `items` (English spelling).
     const reqBody = {
       handle: handle,
       redirect_url: redirectUrl,
       webhook_url: webhookUrl,
       order_nsu: nsu,
-      itens: [{ quantity: 1, price: def.priceCents, description: def.name }],
+      items: [{ quantity: 1, price: def.priceCents, description: def.name }],
     }
     const headers = { 'Content-Type': 'application/json' }
     if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey
@@ -130,13 +130,9 @@ cronAdd('infinitepay_auto_create', '*/30 * * * *', () => {
     }
 
     if (!status || status >= 400) {
+      const rawBodyStr = (res && res.body ? res.body.toString() : '').slice(0, 300)
       console.log(
-        '[infinitepay_auto_create] ' +
-          def.slug +
-          ' failed http=' +
-          status +
-          ' body=' +
-          (res && res.body ? res.body.toString().slice(0, 200) : ''),
+        '[infinitepay_auto_create] ' + def.slug + ' failed http=' + status + ' body=' + rawBodyStr,
       )
       failCount++
       continue

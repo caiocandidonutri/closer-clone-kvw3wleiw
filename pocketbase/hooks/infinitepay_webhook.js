@@ -270,24 +270,12 @@ routerAdd('POST', '/backend/v1/webhook/infinitepay', (e) => {
     if (!evoUrl || !evoKey || !instanceName) {
       console.log('[infinitepay_webhook] missing Evolution config — skipping invite')
     } else {
-      const appUrl = (
-        $secrets.get('SITE_URL') ||
-        $secrets.get('APP_PUBLIC_URL') ||
-        $secrets.get('FRONTEND_URL') ||
-        ''
-      ).replace(/\/$/, '')
-      const inviteLink = appUrl ? appUrl + '/?invite=' + patient.id : 'https://nutriresponde.app'
-      const planName = planRec.getString('name') || planSlug
+      const patientName = patient.getString('name') || ''
       const text =
         'Olá ' +
-        (patient.getString('name') || '') +
-        '! 🎉\n\n' +
-        'Recebemos seu pagamento do plano ' +
-        planName +
-        ' no Nutri Responde. Sua assinatura está ativa!\n\n' +
-        'Para começar a conversar com a Yasa, sua assistente nutricional, clique aqui:\n' +
-        inviteLink +
-        '\n\nBem-vindo(a)! 🥗'
+        patientName +
+        '! 🎉 O Dr. Caio Cândido te dá as boas-vindas ao Nutri Responde! ' +
+        'Sua assistente Yasa já está pronta para te ajudar. Que tal começar me contando qual é o seu principal objetivo? 💚'
       try {
         $http.send({
           url: evoUrl + '/message/sendText/' + instanceName,

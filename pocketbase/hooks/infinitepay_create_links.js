@@ -111,15 +111,13 @@ routerAdd(
       }
 
       // Build the checkout link request body.
-      // NOTE: the InfinitePay Checkout API uses the Portuguese spelling `itens`
-      // (not `items`). Using `items` causes the order items to be ignored and
-      // the link creation to fail. See https://www.infinitepay.io/checkout-documentacao
+      // The InfinitePay API expects `items` (English spelling).
       const reqBody = {
         handle: handle,
         redirect_url: redirectUrl,
         webhook_url: webhookUrl,
         order_nsu: nsu,
-        itens: [
+        items: [
           {
             quantity: 1,
             price: def.priceCents,
@@ -162,16 +160,20 @@ routerAdd(
           respJson = {}
         }
       }
+      const rawBodyStr = (res && res.body ? res.body.toString() : '').slice(0, 300)
       console.log(
-        '[infinitepay_create_links] ' +
-          def.slug +
-          ' http=' +
-          status +
-          ' body=' +
-          (res && res.body ? res.body.toString().slice(0, 300) : ''),
+        '[infinitepay_create_links] ' + def.slug + ' http=' + status + ' body=' + rawBodyStr,
       )
 
       if (!status || status >= 400) {
+        console.log(
+          '[infinitepay_create_links] FAILURE for ' +
+            def.slug +
+            ' status=' +
+            status +
+            ' body=' +
+            rawBodyStr,
+        )
         // Build a human-friendly error so the user knows what to fix.
         let friendly = 'InfinitePay retornou HTTP ' + status
         if (status === 401 || status === 403) {
