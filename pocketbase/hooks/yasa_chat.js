@@ -160,6 +160,13 @@ routerAdd(
           '\n═══ BIBLIOTECA DE RECEITAS DO DR. CAIO — FONTE SEGURA ═══\n' +
           'Quando o paciente pedir receita, sugestão de lanche, jantar, almoço ou troca alimentar, BUSQUE PRIMEIRO nesta base antes de usar conhecimento geral. ' +
           'A base abaixo é a fonte segura e complementar ao seu conhecimento. Priorize sempre o conteúdo da base.\n\n' +
+          '═══ FORMATAÇÃO VISUAL ESTILO GAMMA.APP PARA RECEITAS (OBRIGATÓRIO) ═══\n' +
+          'Quando você responder com uma receita, SEMPRE estruture a mensagem neste estilo visual lindo e limpo:\n' +
+          '1. Título com emoji em negrito (ex: 🥞 *Panqueca de Banana Fit*)\n' +
+          '2. Lista de ingredientes com bullets • (ex: 📋 *Ingredientes:*\n• 1 banana madura\n• 2 ovos...)\n' +
+          '3. Modo de preparo com tempo estimado (ex: ⏱️ *Preparo:* 5 minutos\nAmasse a banana...)\n' +
+          '4. Dica especial do Dr. Caio com emoji (ex: 💡 *Dica do Dr. Caio:* Sirva com pasta de amendoim...)\n' +
+          '5. Chamada para o e-book se relevante (ex: 🔗 Quer o e-book completo? Peça aqui!)\n\n' +
           activeRecs.join('\n\n')
       }
 
@@ -418,33 +425,77 @@ routerAdd(
         .trim()
     }
 
-    // ── Optional DALL-E 3 image generation ──
+    // ── Recipe image resolution (zero-cost from PDF extraction / agent_materials) ──
     let imageUrl = ''
-    if (body.generate_image === true) {
-      try {
-        const dalleRes = $http.send({
-          url: 'https://api.openai.com/v1/images/generations',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + apiKey,
-          },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt:
-              'Ilustração nutricional simples e saudável, estilo infográfico limpo, em português do Brasil quando houver texto. Tema: ' +
-              message.slice(0, 600),
-            n: 1,
-            size: '1024x1024',
-          }),
-          timeout: 60,
-        })
-        if (dalleRes && dalleRes.statusCode && dalleRes.statusCode < 400) {
-          const j = dalleRes.json || {}
-          if (j.data && j.data.length > 0 && j.data[0].url) imageUrl = j.data[0].url
+    try {
+      if (docUrl) {
+        // Check if material has an extracted image
+        const matMatch = docUrl.match(/\/api\/files\/([^\/]+)\/([^\/]+)/)
+        if (matMatch) {
+          const cName = matMatch[1]
+          const rId = matMatch[2]
+          try {
+            const rRec = $app.findRecordById(cName, rId)
+            if (rRec && rRec.getString('image_url')) {
+              imageUrl = rRec.getString('image_url')
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
-    }
+      }
+
+      // If no image yet, search in agent_materials recipes for matches
+      if (!imageUrl) {
+        const checkText = (message + ' ' + content).toLowerCase()
+        const isRecipe =
+          checkText.indexOf('receita') >= 0 ||
+          checkText.indexOf('como fazer') >= 0 ||
+          checkText.indexOf('ingrediente') >= 0 ||
+          checkText.indexOf('preparo') >= 0 ||
+          checkText.indexOf('lanche') >= 0 ||
+          checkText.indexOf('panqueca') >= 0 ||
+          checkText.indexOf('shot') >= 0 ||
+          checkText.indexOf('suco detox') >= 0 ||
+          checkText.indexOf('tempero') >= 0 ||
+          checkText.indexOf('whey') >= 0 ||
+          checkText.indexOf('ovo') >= 0 ||
+          checkText.indexOf('frango') >= 0 ||
+          checkText.indexOf('peixe') >= 0
+
+        if (isRecipe) {
+          const recipeMats = $app.findRecordsByFilter(
+            'agent_materials',
+            'type = "recipe" && image_url != ""',
+            '-created',
+            30,
+            0,
+          )
+          for (const rm of recipeMats) {
+            const rTitle = (rm.getString('title') || '').toLowerCase()
+            const rDesc = (rm.getString('description') || '').toLowerCase()
+            const keywords = (rTitle + ' ' + rDesc)
+              .split(/[\s,_\-—]+/)
+              .filter(
+                (k) =>
+                  k.length > 3 &&
+                  k !== 'receita' &&
+                  k !== 'dr.' &&
+                  k !== 'caio' &&
+                  k !== 'candido' &&
+                  k !== 'nutricionista',
+              )
+
+            let matchCount = 0
+            for (const kw of keywords) {
+              if (checkText.indexOf(kw) >= 0) matchCount++
+            }
+            if (matchCount >= 1) {
+              imageUrl = rm.getString('image_url')
+              break
+            }
+          }
+        }
+      }
+    } catch (_) {}
 
     // ── Persist: store the assistant message + mark needs_human ──
     let savedMessageId = ''

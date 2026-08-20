@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T03:00:12.345Z",
+  "generatedAt": "2026-08-20T03:15:25.690Z",
   "collections": [
     {
       "name": "users",
@@ -570,6 +570,12 @@
         },
         {
           "name": "source_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "image_url",
           "type": "text",
           "required": false,
           "system": false

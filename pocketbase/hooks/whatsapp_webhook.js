@@ -790,6 +790,13 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         '\n═══ BIBLIOTECA DE RECEITAS DO DR. CAIO — FONTE SEGURA ═══\n' +
         'Quando o paciente pedir receita, sugestão de lanche, jantar, almoço ou troca alimentar, BUSQUE PRIMEIRO nesta base antes de usar conhecimento geral. ' +
         'A base abaixo é a fonte segura e complementar ao seu conhecimento. Priorize sempre o conteúdo da base.\n\n' +
+        '═══ FORMATAÇÃO VISUAL ESTILO GAMMA.APP PARA RECEITAS (OBRIGATÓRIO) ═══\n' +
+        'Quando você responder com uma receita, SEMPRE estruture a mensagem neste estilo visual lindo e limpo:\n' +
+        '1. Título com emoji em negrito (ex: 🥞 *Panqueca de Banana Fit*)\n' +
+        '2. Lista de ingredientes com bullets • (ex: 📋 *Ingredientes:*\n• 1 banana madura\n• 2 ovos...)\n' +
+        '3. Modo de preparo com tempo estimado (ex: ⏱️ *Preparo:* 5 minutos\nAmasse a banana...)\n' +
+        '4. Dica especial do Dr. Caio com emoji (ex: 💡 *Dica do Dr. Caio:* Sirva com pasta de amendoim...)\n' +
+        '5. Chamada para o e-book se relevante (ex: 🔗 Quer o e-book completo? Peça aqui!)\n\n' +
         activeRecs.join('\n\n')
     }
 
@@ -1052,6 +1059,132 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
 
   // ── Send the reply back to the contact via Evolution ──
   if (!isLid && evoUrl && evoKey && instanceName) {
+    // ── Visual recipe delivery (Gamma.app style): Check if user asked for or model answered with recipe ──
+    let matchedRecipeImageUrl = ''
+    try {
+      // 1. If explicit document instruction
+      if (sendDocCollection === 'recipes' || sendDocCollection === 'agent_materials') {
+        try {
+          const rDoc = $app.findRecordById(sendDocCollection, sendDocId)
+          if (rDoc) {
+            let imgU = rDoc.getString('image_url')
+            if (!imgU && sendDocCollection === 'recipes') {
+              try {
+                const am = $app.findFirstRecordByData('agent_materials', 'source_id', sendDocId)
+                if (am) imgU = am.getString('image_url')
+              } catch (_) {}
+            }
+            if (imgU) matchedRecipeImageUrl = imgU
+          }
+        } catch (_) {}
+      }
+
+      // 2. If not found via sendDoc, look up recipe materials matching conversation
+      if (!matchedRecipeImageUrl) {
+        const checkText = ((userText || '') + ' ' + (content || '')).toLowerCase()
+        const isRecipeQuery =
+          checkText.indexOf('receita') >= 0 ||
+          checkText.indexOf('como fazer') >= 0 ||
+          checkText.indexOf('ingrediente') >= 0 ||
+          checkText.indexOf('preparo') >= 0 ||
+          checkText.indexOf('lanche') >= 0 ||
+          checkText.indexOf('panqueca') >= 0 ||
+          checkText.indexOf('shot') >= 0 ||
+          checkText.indexOf('suco detox') >= 0 ||
+          checkText.indexOf('tempero') >= 0 ||
+          checkText.indexOf('whey') >= 0 ||
+          checkText.indexOf('ovo') >= 0 ||
+          checkText.indexOf('frango') >= 0 ||
+          checkText.indexOf('peixe') >= 0
+
+        if (isRecipeQuery) {
+          const recipeMats = $app.findRecordsByFilter(
+            'agent_materials',
+            'type = "recipe" && image_url != ""',
+            '-created',
+            50,
+            0,
+          )
+
+          for (const rm of recipeMats) {
+            const rTitle = (rm.getString('title') || '').toLowerCase()
+            const rDesc = (rm.getString('description') || '').toLowerCase()
+            let rTags = []
+            try {
+              const rawT = rm.get('tags')
+              if (Array.isArray(rawT)) rTags = rawT
+              else if (typeof rawT === 'string' && rawT) rTags = JSON.parse(rawT)
+            } catch (_) {}
+            const tagsStr = rTags.join(' ').toLowerCase()
+
+            // Check if significant keywords match
+            const keywords = (rTitle + ' ' + rDesc + ' ' + tagsStr)
+              .split(/[\s,_\-—]+/)
+              .filter(
+                (k) =>
+                  k.length > 3 &&
+                  k !== 'receita' &&
+                  k !== 'dr.' &&
+                  k !== 'caio' &&
+                  k !== 'candido' &&
+                  k !== 'nutricionista' &&
+                  k !== 'e-book' &&
+                  k !== 'book',
+              )
+
+            let matchCount = 0
+            for (const kw of keywords) {
+              if (checkText.indexOf(kw) >= 0) {
+                matchCount++
+              }
+            }
+
+            if (matchCount >= 1) {
+              matchedRecipeImageUrl = rm.getString('image_url')
+              console.log(
+                '[whatsapp_webhook] Matched recipe image for WhatsApp delivery: "' +
+                  rm.getString('title') +
+                  '" URL=' +
+                  matchedRecipeImageUrl,
+              )
+              break
+            }
+          }
+        }
+      }
+    } catch (recMatchErr) {
+      console.log(
+        '[whatsapp_webhook] Recipe match error: ' +
+          (recMatchErr && recMatchErr.message ? recMatchErr.message : String(recMatchErr)),
+      )
+    }
+
+    // ── Visual Send: If recipe image exists, send image FIRST with empty caption ──
+    if (matchedRecipeImageUrl) {
+      try {
+        console.log('[whatsapp_webhook] Sending recipe image FIRST via Evolution sendMedia...')
+        $http.send({
+          url: evoUrl + '/message/sendMedia/' + instanceName,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: evoKey },
+          body: JSON.stringify({
+            number: phoneNumber,
+            mediatype: 'image',
+            mimetype: 'image/jpeg',
+            media: matchedRecipeImageUrl,
+            caption: '',
+          }),
+          timeout: 45,
+        })
+      } catch (imgSendErr) {
+        console.log(
+          '[whatsapp_webhook] Error sending recipe image: ' +
+            (imgSendErr && imgSendErr.message ? imgSendErr.message : String(imgSendErr)),
+        )
+      }
+    }
+
+    // ── Then send formatted text message ──
     try {
       $http.send({
         url: evoUrl + '/message/sendText/' + instanceName,
@@ -1065,8 +1198,8 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       })
     } catch (_) {}
 
-    // Optionally send a document/PDF/image from the library.
-    if (sendDocCollection && sendDocId) {
+    // Optionally send a document/PDF/image from the library if explicit instruction.
+    if (sendDocCollection && sendDocId && !matchedRecipeImageUrl) {
       try {
         const rec = $app.findRecordById(sendDocCollection, sendDocId)
         if (rec) {

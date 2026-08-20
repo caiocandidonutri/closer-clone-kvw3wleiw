@@ -80,6 +80,7 @@ export interface AgentMaterial {
   description: string
   topic: string
   file: string
+  image_url?: string
   content_text: string
   is_active: boolean
   created: string
