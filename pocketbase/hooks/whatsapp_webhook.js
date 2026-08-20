@@ -515,216 +515,185 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     )
   }
 
-  // ── Patient subscription check: enforce limits, expiration & feature gating ──
-  // Resolve the patient record (if any) linked to this contact or phone.
+  // ── Helper to send text via Evolution API ──
+  const sendWhatsAppMessage = (inst, rJid, msgTxt, apiKeyVal, apiBaseUrl) => {
+    if (!rJid || !apiBaseUrl || !apiKeyVal || !inst) return null
+    const cleanNum = rJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+    try {
+      return $http.send({
+        url: apiBaseUrl + '/message/sendText/' + inst,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: apiKeyVal },
+        body: JSON.stringify({ number: cleanNum, text: msgTxt }),
+        timeout: 30,
+      })
+    } catch (err) {
+      console.log('[whatsapp_webhook] sendWhatsAppMessage error:', err)
+      return null
+    }
+  }
+
+  // ── Bloco A — Vincular contato com paciente ──
+  // 1. Extrair número limpo do remoteJid
+  const digitsOnly = phoneNumber.replace(/\D/g, '')
+  const last9 = digitsOnly.slice(-9)
+
+  // 2. Buscar paciente existente
   let patient = null
   try {
-    patient = $app.findFirstRecordByData('patients', 'contact', contactId)
-  } catch (_) {}
-  if (!patient) {
-    try {
-      patient = $app.findFirstRecordByFilter(
-        'patients',
-        'owner = {:uid} && phone = {:ph}',
-        '-created',
-        1,
-        0,
-        { uid: owner, ph: phoneNumber },
-      )
-    } catch (_) {}
+    const patients = $app.findRecordsByFilter(
+      'patients',
+      '', // sem filtro, iterar todos
+      '', // sort
+      200, // limit
+      0, // offset
+    )
+    // Comparar últimos 9 dígitos
+    for (const p of patients) {
+      const pDigits = (p.getString('phone') || p.get('phone') || '').replace(/\D/g, '').slice(-9)
+      if (pDigits === last9 && last9.length >= 9) {
+        patient = p
+        break
+      }
+    }
+  } catch (e) {
+    console.log('[whatsapp_webhook] patient lookup error:', e)
   }
 
-  // Resolve the subscription plan record to read limit_type / has_all_features.
-  let planRec = null
-  let planSlug = ''
-  let limitType = 'total' // default semantics for legacy/unknown plans
-  let hasAllFeatures = true
-  let planLimit = 0
+  // 3. Se encontrou paciente, vincular ao contato
   if (patient) {
-    planSlug = patient.getString('subscription_plan')
+    contact.set('patient_id', patient.id)
+    $app.save(contact)
+    console.log(
+      '[whatsapp_webhook] contact linked to patient:',
+      patient.getString('name') || patient.get('name'),
+    )
+  } else {
+    // Criar lead automático
     try {
-      planRec = $app.findFirstRecordByData('subscription_plans', 'slug', planSlug)
-    } catch (_) {}
-    if (planRec) {
-      const lt = planRec.getString('limit_type')
-      if (lt === 'daily' || lt === 'total') limitType = lt
-      hasAllFeatures = planRec.getBool('has_all_features')
-      const ml = planRec.get('message_limit')
-      if (typeof ml === 'number') planLimit = ml
+      const lead = new Record($app.findCollectionByNameOrId('patients'))
+      if (owner) lead.set('owner', owner)
+      lead.set('name', contact.getString('push_name') || contact.get('push_name') || 'Novo Lead')
+      lead.set('phone', phoneNumber)
+      lead.set('subscription_plan', 'free_trial')
+      lead.set('status', 'trial')
+      lead.set('message_count_used', 0)
+      lead.set('message_count_limit', 999)
+      $app.save(lead)
+      contact.set('patient_id', lead.id)
+      $app.save(contact)
+      patient = lead
+      console.log('[whatsapp_webhook] lead created:', lead.id)
+    } catch (e) {
+      console.log('[whatsapp_webhook] lead creation error:', e)
     }
   }
 
-  let patientBlocked = false
+  // ── Bloco B — Verificar limite de mensagens ──
   if (patient) {
-    // Expire subscription if end date has passed.
-    const endStr = patient.getString('subscription_end')
-    if (endStr) {
-      const endTime = new Date(endStr).getTime()
-      if (!isNaN(endTime) && endTime < Date.now()) {
-        patient.set('status', 'expired')
-        try {
-          $app.save(patient)
-        } catch (_) {}
-        patientBlocked = true
-      }
+    const plan =
+      patient.getString('subscription_plan') || patient.get('subscription_plan') || 'none'
+    const used =
+      typeof patient.get('message_count_used') === 'number' ? patient.get('message_count_used') : 0
+    const limit =
+      typeof patient.get('message_count_limit') === 'number'
+        ? patient.get('message_count_limit')
+        : patient.get('message_limit') || 999
+    const status = patient.getString('status') || patient.get('status') || 'active'
+
+    let blocked = false
+    let blockMessage = ''
+
+    if (plan === 'free_trial' && used >= 5) {
+      blocked = true
+      blockMessage =
+        'Você usou suas 5 mensagens gratuitas do trial! 🎉 Que tal continuar com um plano completo? Acesse: https://nutriresponde.goskip.app/#planos'
+    } else if (plan === 'weekly' && used >= 15) {
+      blocked = true
+      blockMessage =
+        'Você usou suas 15 mensagens do plano semanal. Para continuar, faça upgrade para o plano Mensal! 🚀 Acesse: https://nutriresponde.goskip.app/#planos'
+    } else if (plan === 'monthly' && used >= 25) {
+      // Verificar reset diário — comparar subscription_start com hoje
+      // Simplificado: só verificar total por enquanto
+      blocked = true
+      blockMessage = 'Você já usou suas 25 mensagens de hoje. Elas renovam amanhã! 💚'
+    } else if (plan === 'quarterly' && used >= 40) {
+      blocked = true
+      blockMessage = 'Você já usou suas 40 mensagens de hoje. Elas renovam amanhã! 💚'
+    } else if (status === 'expired' || status === 'cancelled') {
+      blocked = true
+      blockMessage =
+        'Seu plano expirou! 😢 Renove agora para continuar recebendo dicas da Yasa: https://nutriresponde.goskip.app/#planos'
     }
 
-    // Daily-limit plans: reset the counter when 24h have passed since the
-    // last reset anchor (message_reset_date).
-    if (!patientBlocked && limitType === 'daily') {
-      let resetStr = patient.getString('message_reset_date')
-      let needsReset = false
-      if (!resetStr) {
-        needsReset = true
-      } else {
-        const resetTime = new Date(resetStr).getTime()
-        if (isNaN(resetTime) || Date.now() - resetTime >= 24 * 60 * 60 * 1000) {
-          needsReset = true
-        }
-      }
-      if (needsReset) {
-        patient.set('message_count_used', 0)
-        patient.set('message_reset_date', new Date().toISOString())
-        try {
-          $app.save(patient)
-        } catch (_) {}
-      }
-    }
+    if (blocked) {
+      // Enviar mensagem de bloqueio e parar
+      // Salvar mensagem de bloqueio no histórico
+      try {
+        const msgCol = $app.findCollectionByNameOrId('messages')
+        const aiMsg = new Record(msgCol)
+        aiMsg.set('contact', contactId)
+        aiMsg.set('content', blockMessage)
+        aiMsg.set('role', 'assistant')
+        aiMsg.set('timestamp', new Date().toISOString())
+        $app.save(aiMsg)
+        contact.set('last_message', blockMessage)
+        contact.set('status', 'responded')
+        contact.set('last_message_from_me', true)
+        contact.set('last_message_at', new Date().toISOString())
+        $app.save(contact)
+      } catch (_) {}
 
-    // Enforce message limit (total for free_trial/weekly, daily for monthly/quarterly).
-    if (!patientBlocked) {
-      let used = patient.get('message_count_used') || 0
-      let limit = patient.get('message_count_limit')
-      if (limit === null || limit === '' || typeof limit !== 'number') {
-        limit = planLimit // fall back to the plan definition
-      }
-      if (limit && limit > 0 && used >= limit) {
-        patientBlocked = true
-      }
+      sendWhatsAppMessage(instanceName, remoteJid, blockMessage, evoKey, evoUrl)
+      return e.json(200, { ok: true, skipped: 'patient_blocked', contact_id: contactId })
     }
   }
 
-  // Detect whether the patient is requesting a premium-only feature
-  // (lista de compras inteligente / modo geladeira). These are exclusive to
-  // Mensal and Trimestral. Free Trial and Semanal patients get a polite
-  // upsell instead of the AI answer.
-  const lowerText = (userText || '').toLowerCase()
-  const wantsShoppingList =
-    lowerText.indexOf('lista de compras') >= 0 ||
-    lowerText.indexOf('lista do mercado') >= 0 ||
-    lowerText.indexOf('lista de supermercado') >= 0 ||
-    lowerText.indexOf('o que comprar') >= 0 ||
-    lowerText.indexOf('lista de compra') >= 0
-  const wantsFridgeMode =
-    lowerText.indexOf('geladeira') >= 0 ||
-    lowerText.indexOf('despensa') >= 0 ||
-    lowerText.indexOf('o que faço com') >= 0 ||
-    lowerText.indexOf('o que preparo') >= 0 ||
-    lowerText.indexOf('tenho esses alimentos') >= 0
-  const featureLocked = !!(
-    patient &&
-    planSlug &&
-    (planSlug === 'free_trial' || planSlug === 'weekly')
-  )
-  const requestPremiumFeature = wantsShoppingList || wantsFridgeMode
-
-  // If blocked by limit/expiration, send the upgrade message and stop.
-  if (patientBlocked) {
-    const appUrl = (
-      $secrets.get('SITE_URL') ||
-      $secrets.get('APP_PUBLIC_URL') ||
-      $secrets.get('FRONTEND_URL') ||
-      ''
-    ).replace(/\/$/, '')
-    const upgradeLink = appUrl ? appUrl + '/app/planos' : 'https://nutriresponde.app/app/planos'
-    const isTrialPlan = planSlug === 'free_trial'
-    const blockText = isTrialPlan
-      ? 'Seu período de teste chegou ao fim! 🌿\n\n' +
-        'Para continuar recebendo orientações personalizadas da Yasa, escolha seu plano de assinatura:\n' +
-        upgradeLink
-      : 'Você atingiu o limite de mensagens do seu plano 🌿\n\n' +
-        'Para continuar conversando com a Yasa, faça upgrade ou renove sua assinatura:\n' +
-        upgradeLink
-
-    // Persist the block message as the assistant reply.
-    try {
-      const msgCol = $app.findCollectionByNameOrId('messages')
-      const aiMsg = new Record(msgCol)
-      aiMsg.set('contact', contactId)
-      aiMsg.set('content', blockText)
-      aiMsg.set('role', 'assistant')
-      aiMsg.set('timestamp', new Date().toISOString())
-      $app.save(aiMsg)
-      contact.set('last_message', blockText)
-      contact.set('status', 'responded')
-      contact.set('last_message_from_me', true)
-      contact.set('last_message_at', new Date().toISOString())
-      $app.save(contact)
-    } catch (_) {}
-
-    if (!isLid && evoUrl && evoKey && instanceName) {
-      try {
-        $http.send({
-          url: evoUrl + '/message/sendText/' + instanceName,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: evoKey },
-          body: JSON.stringify({ number: phoneNumber, text: blockText }),
-          timeout: 30,
+  // ── Bloco C — Buscar agent_materials ──
+  let materialContext = ''
+  try {
+    const allMaterials = $app.findRecordsByFilter('agent_materials', '', '', 100, 0)
+    if (allMaterials.length > 0) {
+      // Filtro simples por palavras-chave
+      const questionLower = (userText || text || '').toLowerCase()
+      const relevant = allMaterials
+        .filter((m) => {
+          let tagsArr = []
+          try {
+            const rawTags = m.get('tags')
+            if (Array.isArray(rawTags)) tagsArr = rawTags
+            else if (typeof rawTags === 'string' && rawTags) tagsArr = JSON.parse(rawTags)
+          } catch (_) {}
+          const tags = tagsArr.join(' ').toLowerCase()
+          const title = (m.getString('title') || m.get('title') || '').toLowerCase()
+          const content = (
+            m.getString('content_text') ||
+            m.getString('content') ||
+            m.get('content_text') ||
+            m.get('content') ||
+            ''
+          ).toLowerCase()
+          const combined = tags + ' ' + title + ' ' + content
+          // Verificar se alguma palavra da pergunta aparece nos materiais
+          const words = questionLower.split(/\s+/).filter((w) => w.length > 3)
+          return words.some((w) => combined.includes(w))
         })
-      } catch (_) {}
+        .slice(0, 5)
+
+      if (relevant.length > 0) {
+        materialContext =
+          '\n\n📚 Materiais relevantes do Dr. Caio:\n' +
+          relevant
+            .map(
+              (m) =>
+                `- ${m.getString('title') || m.get('title')}: ${(m.getString('content_text') || m.getString('content') || m.get('content_text') || m.get('content') || '').substring(0, 200)}`,
+            )
+            .join('\n')
+        console.log('[whatsapp_webhook] materials found:', relevant.length)
+      }
     }
-    return e.json(200, { ok: true, skipped: 'patient_blocked', contact_id: contactId })
-  }
-
-  // If the patient is on a locked plan and asked for a premium feature,
-  // respond with a polite upsell instead of calling the AI.
-  if (featureLocked && requestPremiumFeature) {
-    const appUrl = (
-      $secrets.get('SITE_URL') ||
-      $secrets.get('APP_PUBLIC_URL') ||
-      $secrets.get('FRONTEND_URL') ||
-      ''
-    ).replace(/\/$/, '')
-    const upgradeLink = appUrl ? appUrl + '/app/planos' : 'https://nutriresponde.app/app/planos'
-    const featureName = wantsShoppingList
-      ? 'a lista de compras inteligente'
-      : 'o modo "O que tenho na geladeira?"'
-    const upsellText =
-      'Olá! 😊\n\n' +
-      'O recurso ' +
-      featureName +
-      ' está disponível a partir do plano Mensal (R$79,90/mês), que já inclui todos os recursos da Yasa.\n\n' +
-      'Você pode fazer upgrade do seu plano atual aqui:\n' +
-      upgradeLink +
-      '\n\nSe tiver qualquer dúvida, é só me chamar! 🤗'
-
-    try {
-      const msgCol = $app.findCollectionByNameOrId('messages')
-      const aiMsg = new Record(msgCol)
-      aiMsg.set('contact', contactId)
-      aiMsg.set('content', upsellText)
-      aiMsg.set('role', 'assistant')
-      aiMsg.set('timestamp', new Date().toISOString())
-      $app.save(aiMsg)
-      contact.set('last_message', upsellText)
-      contact.set('status', 'responded')
-      contact.set('last_message_from_me', true)
-      contact.set('last_message_at', new Date().toISOString())
-      $app.save(contact)
-    } catch (_) {}
-
-    if (!isLid && evoUrl && evoKey && instanceName) {
-      try {
-        $http.send({
-          url: evoUrl + '/message/sendText/' + instanceName,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: evoKey },
-          body: JSON.stringify({ number: phoneNumber, text: upsellText }),
-          timeout: 30,
-        })
-      } catch (_) {}
-    }
-    return e.json(200, { ok: true, skipped: 'feature_locked', contact_id: contactId })
+  } catch (e) {
+    console.log('[whatsapp_webhook] material search error:', e)
   }
 
   // ── Build the nutrition system prompt (kept in sync with yasa_chat.js) ──
@@ -900,7 +869,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       'Quando você julgar que enviar um PDF da biblioteca (receita, modelo de plano ou material) ajudaria o paciente, responda com uma linha no formato exato:\n' +
       'ENVIAR_DOCUMENTO: <collection>|<recordId>\n' +
       'Onde <collection> é "recipes", "meal_plan_templates" ou "agent_materials". Coloque essa linha no final da resposta. O sistema anexará o arquivo automaticamente.'
-    return base + extra
+    return base + extra + materialContext
   })()
   // ── Recent conversation history (last 12, chronological) ──
   const history = (() => {

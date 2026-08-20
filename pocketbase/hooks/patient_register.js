@@ -184,6 +184,31 @@ routerAdd('POST', '/backend/v1/patients/register', (e) => {
       createdNew,
   )
 
+  // Vincular contato WhatsApp existente
+  try {
+    const patientPhone = (phone || '').replace(/\D/g, '')
+    const last9 = patientPhone.slice(-9)
+
+    const contacts = $app.findRecordsByFilter('contacts', '', '', 200, 0)
+    for (const c of contacts) {
+      const cPhone = (c.getString('remote_jid') || c.get('remote_jid') || '')
+        .replace('@s.whatsapp.net', '')
+        .replace(/\D/g, '')
+        .slice(-9)
+      if (cPhone === last9 && last9.length >= 9) {
+        c.set('patient_id', patient.id)
+        $app.save(c)
+        console.log(
+          '[patient_register] linked existing contact to patient:',
+          patient.getString('name') || patient.get('name'),
+        )
+        break
+      }
+    }
+  } catch (e) {
+    console.log('[patient_register] contact linking error:', e)
+  }
+
   // ── Send WhatsApp welcome invite message ──
   let integ = null
   try {
