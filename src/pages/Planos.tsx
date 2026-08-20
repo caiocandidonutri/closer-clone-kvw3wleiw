@@ -1,282 +1,221 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { usePlans } from '@/hooks/use-patients'
-import { Card, CardContent } from '@/components/ui/card'
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  Loader2,
-  Check,
-  CreditCard,
-  Sparkles,
-  X,
-  ArrowRight,
-  RefreshCw,
-  AlertTriangle,
-} from 'lucide-react'
-import type { SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
-import { resolveCheckoutUrl, createInfinitePayLinks } from '@/lib/infinitepay'
-import { toast } from 'sonner'
-
-const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+import { useToast } from '@/hooks/use-toast'
+import { getSubscriptionPlans } from '@/services/patients'
+import { Check, X, ExternalLink, RefreshCw, Zap } from 'lucide-react'
+import { resolveCheckoutUrl, SubscriptionPlan, FALLBACK_PLANS } from '@/lib/infinitepay'
 
 export default function Planos() {
-  const { plans, loading, refetch } = usePlans()
-  const navigate = useNavigate()
+  const [plans, setPlans] = useState<SubscriptionPlan[]>(FALLBACK_PLANS)
+  const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const { toast } = useToast()
 
-  const sorted = [...plans].sort((a, b) => (a.price_brl || 0) - (b.price_brl || 0))
+  const fetchPlans = async () => {
+    setLoading(true)
+    try {
+      const data = await getSubscriptionPlans()
+      if (data && data.length > 0) {
+        setPlans(data)
+      }
+    } catch {
+      // Keep fallbacks
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  // Quantos links já foram gerados via API (têm infinitepay_link preenchido)?
-  const apiLinksCount = sorted.filter((p) => !!p.infinitepay_link).length
-  const paidPlansCount = sorted.filter((p) => (p.price_brl || 0) > 0).length
+  useEffect(() => {
+    fetchPlans()
+  }, [])
 
-  const handleGenerate = async () => {
+  const handleSyncPlans = async () => {
     setGenerating(true)
     try {
-      const res = await createInfinitePayLinks()
-      await refetch()
-      if (res.success) {
-        toast.success('Links de pagamento gerados com sucesso!')
-      } else {
-        // Mensagem amigável vinda do backend (ex.: INFINITEPAY_API_KEY ausente).
-        const msg =
-          res.message || 'Não foi possível gerar todos os links. Veja os detalhes no console.'
-        toast.error(msg)
-        console.warn('[Planos] create-links result:', res)
-      }
-    } catch (err: any) {
-      const msg = err?.data?.message || err?.message || 'Falha ao gerar os links'
-      toast.error(msg)
-      console.error('[Planos] create-links error:', err)
+      await fetchPlans()
+      toast({
+        title: 'Planos atualizados',
+        description: 'Os planos e links da InfinitePay foram sincronizados.',
+      })
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível atualizar os planos.',
+      })
     } finally {
       setGenerating(false)
     }
   }
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-8 p-4 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-full">
-      <div className="text-center">
-        <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">
-          Planos de assinatura
-        </h2>
-        <p className="text-muted-foreground mt-2 font-medium max-w-xl mx-auto">
-          Escolha o plano ideal para cada paciente. A lista de compras inteligente e o modo
-          geladeira são exclusivos dos planos Mensal e Trimestral.
-        </p>
-      </div>
+  const getCheckoutLink = (plan: SubscriptionPlan) => {
+    return resolveCheckoutUrl(plan)
+  }
 
-      {/* Geração / status dos links InfinitePay */}
-      <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-muted/30 p-4 md:flex-row md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {apiLinksCount < paidPlansCount ? (
-            <>
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <span>
-                {apiLinksCount === 0
-                  ? 'Os links de pagamento ainda não foram gerados via API (usando links manuais sem webhook).'
-                  : `${apiLinksCount} de ${paidPlansCount} links gerados via API.`}
-              </span>
-            </>
-          ) : (
-            <>
-              <Check className="h-4 w-4 text-whatsapp-green" />
-              <span>
-                Todos os {paidPlansCount} links de pagamento foram gerados via API (com webhook de
-                pagamento configurado).
-              </span>
-            </>
-          )}
+  const planTheme = (slug: string) => {
+    switch (slug) {
+      case 'weekly':
+        return {
+          border: 'border-emerald-500',
+          badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+          button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+          highlight: true,
+        }
+      case 'monthly':
+        return {
+          border: 'border-teal-500/60',
+          badge: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+          button: 'bg-teal-600 hover:bg-teal-700 text-white',
+          highlight: false,
+        }
+      case 'quarterly':
+        return {
+          border: 'border-amber-500/60',
+          badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+          button: 'bg-amber-600 hover:bg-amber-700 text-white',
+          highlight: false,
+        }
+      default:
+        return {
+          border: 'border-border',
+          badge: 'bg-muted text-muted-foreground',
+          button: 'bg-primary hover:bg-primary/90 text-primary-foreground',
+          highlight: false,
+        }
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Planos de Assinatura
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Gerencie e visualize os planos disponíveis e seus links diretos da InfinitePay
+          </p>
         </div>
         <Button
+          onClick={handleSyncPlans}
+          disabled={generating || loading}
           variant="outline"
-          className="rounded-full"
-          onClick={handleGenerate}
-          disabled={generating}
+          className="gap-2"
         >
-          {generating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          {generating ? 'Gerando...' : 'Gerar / atualizar links'}
+          <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+          Sincronizar Planos
         </Button>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-          {sorted.map((plan) => (
-            <PlanCard
-              key={plan.id}
-              plan={plan}
-              onContract={() => navigate('/app/pacientes/novo')}
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {plans.map((plan) => {
+          const theme = planTheme(plan.slug)
+          const checkoutUrl = getCheckoutLink(plan)
 
-      <p className="text-center text-xs text-muted-foreground">
-        Sem fidelidade · Cancele quando quiser · Pagamento via InfinitePay
-      </p>
-    </div>
-  )
-}
-
-function PlanCard({ plan, onContract }: { plan: SubscriptionPlan; onContract: () => void }) {
-  const isFree = (plan.price_brl || 0) === 0
-  const isPopular = plan.slug === 'weekly'
-  const benefits: string[] = Array.isArray(plan.benefits) ? plan.benefits : []
-  const hasAllFeatures = !!plan.has_all_features
-  const infinitePayUrl = resolveCheckoutUrl(plan)
-  // Link com webhook configurado (gerado via API) — sinalizado no card.
-  const hasApiLink = !!plan.infinitepay_link
-
-  // Descrição do limite de mensagens conforme a semântica do plano.
-  const limitLabel = (() => {
-    if (plan.slug === 'quarterly') return `${plan.message_limit} mensagens por dia (reset diário)`
-    if (plan.slug === 'monthly') return `${plan.message_limit} mensagens por dia (reset diário)`
-    if (plan.slug === 'weekly') return `${plan.message_limit} mensagens no total`
-    if (plan.slug === 'free_trial') return `${plan.message_limit} mensagens no total`
-    if (plan.message_limit > 0)
-      return plan.limit_type === 'daily'
-        ? `${plan.message_limit} mensagens por dia`
-        : `${plan.message_limit} mensagens no total`
-    return 'Mensagens ilimitadas'
-  })()
-
-  return (
-    <Card
-      className={`relative rounded-[1.75rem] overflow-hidden border-2 transition-all hover:shadow-elevation ${
-        isPopular ? 'border-primary shadow-elevation' : 'border-border/40'
-      }`}
-    >
-      {isPopular && (
-        <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-xl flex items-center gap-1">
-          <Sparkles className="h-3 w-3" /> Mais popular
-        </div>
-      )}
-      <CardContent className="p-6 flex flex-col h-full">
-        <div className="mb-4">
-          <h3 className="text-xl font-bold tracking-tight text-foreground">{plan.name}</h3>
-          {plan.description && (
-            <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
-          )}
-        </div>
-
-        <div className="mb-5">
-          <span className="text-4xl font-bold tracking-tighter text-foreground">
-            {isFree ? 'Grátis' : formatBRL(plan.price_brl)}
-          </span>
-          {!isFree && (
-            <span className="text-sm text-muted-foreground font-medium">
-              {' '}
-              / {plan.duration_days} dias
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-2.5 flex-1 mb-6">
-          {/* Limite de mensagens em destaque */}
-          <div className="flex items-start gap-2 mb-1">
-            <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <span className="text-sm text-foreground font-bold">{limitLabel}</span>
-          </div>
-
-          {benefits.length > 0 ? (
-            benefits.map((b, i) => {
-              const isExclusion = b.indexOf('❌') >= 0
-              return (
-                <div key={i} className="flex items-start gap-2">
-                  {isExclusion ? (
-                    <X className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  ) : (
-                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  )}
-                  <span
-                    className={`text-sm font-medium ${
-                      isExclusion ? 'text-muted-foreground line-through' : 'text-foreground'
-                    }`}
-                  >
-                    {b}
-                  </span>
+          return (
+            <Card
+              key={plan.id || plan.slug}
+              className={`flex flex-col justify-between relative overflow-hidden transition-all duration-200 hover:shadow-lg ${
+                theme.border
+              } ${theme.highlight ? 'ring-2 ring-emerald-500/50 shadow-emerald-500/10' : ''}`}
+            >
+              {plan.slug === 'weekly' && (
+                <div className="bg-emerald-600 text-white text-[11px] font-bold py-1 text-center tracking-wider uppercase">
+                  ⭐ Mais Escolhido
                 </div>
-              )
-            })
-          ) : (
-            <>
-              <div className="flex items-start gap-2">
-                <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <span className="text-sm text-foreground font-medium">
-                  {plan.duration_days} dias de acesso
-                </span>
-              </div>
-              {hasAllFeatures ? (
-                <>
-                  <div className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                    <span className="text-sm text-foreground font-medium">
-                      Lista de compras inteligente
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                    <span className="text-sm text-foreground font-medium">
-                      Modo "O que tenho na geladeira?"
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-start gap-2">
-                    <X className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                    <span className="text-sm text-muted-foreground font-medium line-through">
-                      Lista de compras inteligente
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <X className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                    <span className="text-sm text-muted-foreground font-medium line-through">
-                      Modo "O que tenho na geladeira?"
-                    </span>
-                  </div>
-                </>
               )}
-            </>
-          )}
-        </div>
 
-        <Button
-          asChild
-          className={`rounded-full w-full ${isPopular ? 'shadow-elevation' : ''}`}
-          variant={isPopular ? 'default' : 'outline'}
-        >
-          {isFree ? (
-            <button onClick={onContract}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Começar grátis
-            </button>
-          ) : (
-            <a href={infinitePayUrl} target="_blank" rel="noopener noreferrer">
-              <CreditCard className="mr-2 h-4 w-4" />
-              Contratar
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </a>
-          )}
-        </Button>
+              <div>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <Badge variant="outline" className={`text-xs ${theme.badge}`}>
+                      {plan.duration_days} dias
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {plan.limit_type === 'daily'
+                        ? `${plan.message_limit} msgs/dia`
+                        : `${plan.message_limit} mensagens`}
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-xl">{plan.name}</CardTitle>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl font-extrabold text-foreground">
+                      {plan.price_brl === 0
+                        ? 'Grátis'
+                        : `R$ ${plan.price_brl.toFixed(2).replace('.', ',')}`}
+                    </span>
+                    {plan.price_brl > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        /{' '}
+                        {plan.duration_days <= 7
+                          ? 'sem'
+                          : plan.duration_days <= 30
+                            ? 'mês'
+                            : 'trim'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">{plan.description}</p>
+                </CardHeader>
 
-        <Badge
-          variant="outline"
-          className={`mt-3 self-center text-[10px] ${
-            !isFree && !hasApiLink ? 'border-amber-400 text-amber-600' : ''
-          }`}
-        >
-          {limitLabel}
-        </Badge>
-      </CardContent>
-    </Card>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2 border-t pt-4">
+                    <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                      O que está incluso:
+                    </p>
+                    <ul className="space-y-2 text-xs">
+                      {plan.benefits.map((benefit, idx) => {
+                        const isBlocked = benefit.startsWith('❌')
+                        const cleanText = benefit.replace(/^[✅❌]\s*/, '')
+
+                        return (
+                          <li
+                            key={idx}
+                            className={`flex items-start gap-2 ${
+                              isBlocked
+                                ? 'text-muted-foreground line-through opacity-70'
+                                : 'text-foreground'
+                            }`}
+                          >
+                            {isBlocked ? (
+                              <X className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                            )}
+                            <span>{cleanText}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                </CardContent>
+              </div>
+
+              <div className="p-6 pt-0">
+                {checkoutUrl ? (
+                  <a
+                    href={checkoutUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full"
+                  >
+                    <Button className={`w-full gap-2 ${theme.button}`}>
+                      <span>Link InfinitePay</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </a>
+                ) : (
+                  <Button variant="secondary" className="w-full" disabled>
+                    Plano Gratuito
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
   )
 }

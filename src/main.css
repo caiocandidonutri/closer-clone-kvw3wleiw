@@ -87,8 +87,42 @@
     }
   }
 
+  @keyframes gradient-hero {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  .animate-gradient-hero {
+    background: linear-gradient(135deg, #075e54, #054c44, #128c7e, #075e54);
+    background-size: 300% 300%;
+    animation: gradient-hero 14s ease infinite;
+  }
+
   .animate-pulse-ring {
     animation: pulse-ring 2s infinite;
+  }
+
+  .animate-subtle-pulse {
+    animation: subtle-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes subtle-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.45);
+    }
+    50% {
+      transform: scale(1.03);
+      box-shadow: 0 0 0 6px rgba(37, 211, 102, 0);
+    }
   }
 
   .scrollbar-hide::-webkit-scrollbar {

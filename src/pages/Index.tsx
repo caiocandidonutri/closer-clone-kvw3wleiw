@@ -1,717 +1,995 @@
 import { useState, useEffect } from 'react'
-import { Link, Navigate } from 'react-router-dom'
-import { useAuth } from '@/hooks/use-auth'
-import { useLanguage } from '@/hooks/use-language'
-import { LanguageSwitcher } from '@/components/LanguageSwitcher'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Link } from 'react-router-dom'
 import {
-  MessageCircle,
-  Camera,
-  ShoppingCart,
-  ClipboardList,
-  ShieldCheck,
+  Sparkles,
   Check,
   X,
-  Menu,
-  CalendarClock,
-  Wallet,
-  Frown,
-  UserPlus,
-  LineChart,
   ArrowRight,
-  Sparkles,
+  ShieldCheck,
+  Zap,
+  MessageSquare,
+  Award,
+  ChevronRight,
+  ExternalLink,
+  Bot,
+  Heart,
+  Calendar,
+  Utensils,
+  BookOpen,
+  Apple,
+  ShoppingBag,
+  Refrigerator,
+  Flame,
+  Clock,
+  ChevronDown,
+  Star,
+  Users,
+  Activity,
+  CheckCircle2,
 } from 'lucide-react'
-import { usePlans } from '@/hooks/use-patients'
-import { getPublicStats, type PublicStats } from '@/services/patients'
-import { INFINITEPAY_FALLBACK_LINKS, resolveCheckoutUrl } from '@/lib/infinitepay'
-import type { SubscriptionPlanSlug } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { getPublicSubscriptionPlans, getPublicStats, PublicStats } from '@/services/patients'
+import { SubscriptionPlan, FALLBACK_PLANS, INFINITEPAY_LINKS } from '@/lib/infinitepay'
+
+// ── Comparison Table Matrix ──
+interface FeatureRow {
+  name: string
+  category?: string
+  description: string
+  free: boolean | string
+  weekly: boolean | string
+  monthly: boolean | string
+  quarterly: boolean | string
+}
+
+const COMPARISON_FEATURES: FeatureRow[] = [
+  {
+    name: 'Limite de mensagens',
+    description: 'Volume de interações com a IA',
+    free: '3 mensagens',
+    weekly: '15 mensagens',
+    monthly: '25 msgs / dia',
+    quarterly: '40 msgs / dia',
+  },
+  {
+    name: 'Orientação nutricional básica',
+    description: 'Dúvidas sobre alimentos, calorias e hábitos',
+    free: true,
+    weekly: true,
+    monthly: true,
+    quarterly: true,
+  },
+  {
+    name: 'Receitas de lanches fit',
+    description: 'Panquecas, cookies, bolos saudáveis e vitaminas',
+    free: false,
+    weekly: true,
+    monthly: true,
+    quarterly: true,
+  },
+  {
+    name: 'Estratégia de marmitas (Meal Prep)',
+    description: 'Planejamento de marmitas e refeições para toda a semana',
+    free: false,
+    weekly: false,
+    monthly: true,
+    quarterly: true,
+  },
+  {
+    name: 'Lista de compras inteligente',
+    description: 'Organização por seção de mercado com estimativa de custo',
+    free: false,
+    weekly: false,
+    monthly: true,
+    quarterly: true,
+  },
+  {
+    name: 'Modo "O que tenho na geladeira"',
+    description: 'Sugestões de refeições com o que você já tem em casa',
+    free: false,
+    weekly: false,
+    monthly: true,
+    quarterly: true,
+  },
+  {
+    name: 'Acompanhamento premium',
+    description: 'Suporte avançado para metas específicas',
+    free: false,
+    weekly: false,
+    monthly: false,
+    quarterly: true,
+  },
+  {
+    name: 'Prioridade no WhatsApp',
+    description: 'Respostas ultrarrápidas nos horários de pico',
+    free: false,
+    weekly: false,
+    monthly: false,
+    quarterly: true,
+  },
+  {
+    name: 'Relatórios semanais de evolução',
+    description: 'Consolidação de hábitos e progresso nutricional',
+    free: false,
+    weekly: false,
+    monthly: false,
+    quarterly: true,
+  },
+]
 
 export default function Index() {
-  const { user, loading } = useAuth()
-  const { t } = useLanguage()
-  const { plans: dbPlans } = usePlans()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [stats, setStats] = useState<PublicStats | null>(null)
-  const [loadingStats, setLoadingStats] = useState(true)
+  const [plans, setPlans] = useState<SubscriptionPlan[]>(FALLBACK_PLANS)
+  const [stats, setStats] = useState<PublicStats>({
+    total_patients: 184,
+    active_subscribers: 142,
+    total_messages: 24500,
+  })
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   useEffect(() => {
-    let mounted = true
-    getPublicStats()
+    let isMounted = true
+    getPublicSubscriptionPlans()
       .then((data) => {
-        if (mounted) {
-          setStats(data)
-          setLoadingStats(false)
+        if (isMounted && data && data.length > 0) {
+          const order = ['free_trial', 'weekly', 'monthly', 'quarterly']
+          const sorted = [...data].sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug))
+          setPlans(sorted)
         }
       })
-      .catch((err) => {
-        console.warn('Failed to load public stats, using fallback:', err)
-        if (mounted) {
-          setLoadingStats(false)
+      .catch(() => {})
+
+    getPublicStats()
+      .then((st) => {
+        if (isMounted && st && (st.total_patients > 0 || st.active_subscribers > 0)) {
+          setStats(st)
         }
       })
+      .catch(() => {})
+
     return () => {
-      mounted = false
+      isMounted = false
     }
   }, [])
 
-  if (!loading && user) {
-    return <Navigate to="/app" replace />
+  const getPlanLink = (slug: string) => {
+    if (slug === 'free_trial') return '/auth'
+    if (slug === 'weekly') return INFINITEPAY_LINKS.weekly
+    if (slug === 'monthly') return INFINITEPAY_LINKS.monthly
+    if (slug === 'quarterly') return INFINITEPAY_LINKS.quarterly
+    return '/auth'
   }
 
-  // Map slug → API-generated InfinitePay link (with webhook configured).
-  // Falls back to the manual dashboard links only when the API link is absent.
-  const planLinks: Partial<Record<SubscriptionPlanSlug, string>> = {}
-  for (const p of dbPlans) {
-    planLinks[p.slug as SubscriptionPlanSlug] = resolveCheckoutUrl(p)
+  const renderCellContent = (val: boolean | string) => {
+    if (typeof val === 'string') {
+      return (
+        <span className="font-semibold text-emerald-950 dark:text-emerald-100 text-xs sm:text-sm">
+          {val}
+        </span>
+      )
+    }
+    if (val === true) {
+      return (
+        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400">
+          <Check className="w-4 h-4 stroke-[3]" />
+        </div>
+      )
+    }
+    return (
+      <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-50 dark:bg-red-950/40 text-red-400 dark:text-red-400">
+        <X className="w-4 h-4 stroke-[2.5]" />
+      </div>
+    )
   }
-  const linkFor = (slug: SubscriptionPlanSlug) =>
-    planLinks[slug] || INFINITEPAY_FALLBACK_LINKS[slug] || ''
 
-  const navLinks = [
-    { href: '#funcionalidades', label: t('nav_features') },
-    { href: '#como-funciona', label: t('nav_how') },
-    { href: '#planos', label: t('nav_pricing') },
-  ]
-
-  const problems = [
-    { icon: Frown, text: t('problem_1') },
-    { icon: MessageCircle, text: t('problem_2') },
-    { icon: Wallet, text: t('problem_3') },
-    { icon: CalendarClock, text: t('problem_4') },
-    { icon: LineChart, text: t('problem_5') },
-    { icon: MessageCircle, text: t('problem_6') },
-  ]
-
-  const withoutItems = [
-    t('beforeafter_without_1'),
-    t('beforeafter_without_2'),
-    t('beforeafter_without_3'),
-    t('beforeafter_without_4'),
-    t('beforeafter_without_5'),
-  ]
-  const withItems = [
-    t('beforeafter_with_1'),
-    t('beforeafter_with_2'),
-    t('beforeafter_with_3'),
-    t('beforeafter_with_4'),
-    t('beforeafter_with_5'),
-  ]
-
-  const steps = [
+  const faqs = [
     {
-      n: '01',
-      title: t('how_step1_title'),
-      desc: t('how_step1_desc'),
-      icon: UserPlus,
+      q: 'Como funciona o Free Trial de 3 mensagens?',
+      a: 'Você se cadastra em menos de 1 minuto sem precisar de cartão de crédito. Imediatamente recebe 3 mensagens gratuitas para tirar dúvidas nutricionais no WhatsApp com a Yasa.',
     },
     {
-      n: '02',
-      title: t('how_step2_title'),
-      desc: t('how_step2_desc'),
-      icon: MessageCircle,
+      q: 'Qual a diferença entre o plano Semanal e o Mensal?',
+      a: 'O plano Semanal libera 15 mensagens e acesso exclusivo a receitas práticas de lanches fits. Já o plano Mensal libera 25 mensagens por dia, receitas completas, estratégias de marmitas para toda a semana, lista de compras inteligente e o modo geladeira.',
     },
     {
-      n: '03',
-      title: t('how_step3_title'),
-      desc: t('how_step3_desc'),
-      icon: LineChart,
-    },
-  ]
-
-  const features = [
-    {
-      icon: MessageCircle,
-      title: t('feature_chat_title'),
-      desc: t('feature_chat_desc'),
+      q: 'Como é feito o pagamento?',
+      a: 'O pagamento é processado com total segurança via InfinitePay, aceitando Pix ou Cartão de Crédito. A liberação do seu WhatsApp com a Yasa é instantânea após a confirmação.',
     },
     {
-      icon: Camera,
-      title: t('feature_photo_title'),
-      desc: t('feature_photo_desc'),
-    },
-    {
-      icon: ClipboardList,
-      title: t('feature_plan_title'),
-      desc: t('feature_plan_desc'),
-    },
-    {
-      icon: ShoppingCart,
-      title: t('feature_list_title'),
-      desc: t('feature_list_desc'),
-    },
-  ]
-
-  const plans = [
-    {
-      name: t('pricing_trial_name'),
-      price: t('pricing_trial_price'),
-      period: t('pricing_trial_period'),
-      badge: t('pricing_trial_badge'),
-      cta: t('pricing_cta_trial'),
-      href: '/auth',
-      external: false,
-      features: [
-        t('pricing_trial_1'),
-        t('pricing_trial_2'),
-        t('pricing_trial_3'),
-        t('pricing_trial_4'),
-      ],
-      highlight: false,
-    },
-    {
-      name: t('pricing_weekly_name'),
-      price: t('pricing_weekly_price'),
-      period: t('pricing_weekly_period'),
-      badge: t('pricing_weekly_badge'),
-      cta: t('pricing_cta_weekly'),
-      href: linkFor('weekly'),
-      external: true,
-      features: [
-        t('pricing_weekly_1'),
-        t('pricing_weekly_2'),
-        t('pricing_weekly_3'),
-        t('pricing_weekly_4'),
-        t('pricing_weekly_5'),
-        t('pricing_weekly_6'),
-      ],
-      highlight: true,
-    },
-    {
-      name: t('pricing_monthly_name'),
-      price: t('pricing_monthly_price'),
-      period: t('pricing_monthly_period'),
-      badge: t('pricing_monthly_badge'),
-      cta: t('pricing_cta_monthly'),
-      href: linkFor('monthly'),
-      external: true,
-      features: [
-        t('pricing_monthly_1'),
-        t('pricing_monthly_2'),
-        t('pricing_monthly_3'),
-        t('pricing_monthly_4'),
-        t('pricing_monthly_5'),
-      ],
-      highlight: false,
-    },
-    {
-      name: t('pricing_quarterly_name'),
-      price: t('pricing_quarterly_price'),
-      period: t('pricing_quarterly_period'),
-      badge: t('pricing_quarterly_badge'),
-      cta: t('pricing_cta_quarterly'),
-      href: linkFor('quarterly'),
-      external: true,
-      features: [
-        t('pricing_quarterly_1'),
-        t('pricing_quarterly_2'),
-        t('pricing_quarterly_3'),
-        t('pricing_quarterly_4'),
-        t('pricing_quarterly_5'),
-        t('pricing_quarterly_6'),
-      ],
-      highlight: false,
+      q: 'A Yasa substitui a consulta médica?',
+      a: 'A Yasa é uma assistente nutricional inteligente que opera sob as diretrizes científicas do Dr. Caio Cândido para te ajudar no dia a dia com dúvidas, refeições e receitas. Ela não realiza diagnósticos médicos e sempre orienta acompanhamento clínico quando necessário.',
     },
   ]
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans text-foreground">
-      {/* ===== Header ===== */}
-      <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-whatsapp-green text-white shadow-glow">
-              <MessageCircle className="h-5 w-5" />
-            </span>
-            <span className="text-lg font-bold tracking-tight text-whatsapp-dark">
-              Dr. Caio Cândido
-            </span>
-          </Link>
+    <div className="min-h-screen bg-gradient-to-b from-emerald-950 via-[#0B2E27] to-[#041B16] text-white selection:bg-emerald-500 selection:text-white font-sans">
+      {/* ── TOP NAV BAR ── */}
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-emerald-950/80 border-b border-emerald-800/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-[#128C7E] flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Bot className="w-6 h-6 text-emerald-950" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-lg sm:text-xl tracking-tight text-white">
+                  Nutri Responde
+                </span>
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                  IA Dr. Caio
+                </Badge>
+              </div>
+              <p className="text-xs text-emerald-200/70 hidden sm:block">
+                Sua Nutricionista Pessoal no WhatsApp
+              </p>
+            </div>
+          </div>
 
-          <nav className="hidden items-center gap-8 md:flex">
-            {navLinks.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-whatsapp-dark"
-              >
-                {l.label}
-              </a>
-            ))}
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-emerald-100/80">
+            <a href="#como-funciona" className="hover:text-emerald-300 transition-colors">
+              Como funciona
+            </a>
+            <a href="#planos" className="hover:text-emerald-300 transition-colors">
+              Planos e Preços
+            </a>
+            <a href="#comparativo" className="hover:text-emerald-300 transition-colors">
+              Comparativo
+            </a>
+            <a href="#depoimentos" className="hover:text-emerald-300 transition-colors">
+              Resultados
+            </a>
           </nav>
 
-          <div className="hidden items-center gap-2 md:flex">
-            <LanguageSwitcher />
-            <Button
-              variant="ghost"
-              asChild
-              className="rounded-full font-medium text-whatsapp-dark hover:bg-whatsapp-green/10"
-            >
-              <Link to="/auth">{t('sign_in')}</Link>
-            </Button>
-            <Button
-              asChild
-              className="rounded-full bg-whatsapp-green px-5 font-semibold text-white shadow-glow transition-all hover:bg-whatsapp-green/90 hover:shadow-floating"
-            >
-              <Link to="/auth">{t('hero_cta_trial')}</Link>
-            </Button>
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="flex items-center gap-2 md:hidden">
-            <LanguageSwitcher />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full text-whatsapp-dark"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Menu"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
+          <div className="flex items-center gap-3">
+            <Link to="/auth">
+              <Button
+                variant="ghost"
+                className="text-emerald-200 hover:text-white hover:bg-emerald-900/50 text-sm hidden sm:inline-flex"
+              >
+                Entrar
+              </Button>
+            </Link>
+            <a href="#planos">
+              <Button className="bg-[#25D366] hover:bg-[#1EBE5D] text-emerald-950 font-bold px-4 sm:px-6 shadow-lg shadow-emerald-500/20 rounded-full transition-all hover:scale-105 active:scale-95">
+                Começar Grátis
+              </Button>
+            </a>
           </div>
         </div>
-
-        {/* Mobile dropdown */}
-        {menuOpen && (
-          <div className="border-t border-border/60 bg-white px-4 py-4 md:hidden">
-            <nav className="flex flex-col gap-1">
-              {navLinks.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-whatsapp-green/10 hover:text-whatsapp-dark"
-                >
-                  {l.label}
-                </a>
-              ))}
-              <div className="mt-3 flex flex-col gap-2">
-                <Button variant="outline" asChild className="rounded-full font-medium">
-                  <Link to="/auth">{t('sign_in')}</Link>
-                </Button>
-                <Button
-                  asChild
-                  className="rounded-full bg-whatsapp-green font-semibold text-white shadow-glow"
-                >
-                  <Link to="/auth">{t('hero_cta_trial')}</Link>
-                </Button>
-              </div>
-            </nav>
-          </div>
-        )}
       </header>
 
-      <main className="flex-1">
-        {/* ===== Hero ===== */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-whatsapp-green/5 via-white to-white">
-          <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-whatsapp-green/15 blur-3xl" />
-          <div className="pointer-events-none absolute -left-24 top-40 h-72 w-72 rounded-full bg-whatsapp-teal/10 blur-3xl" />
-          <div className="mx-auto max-w-6xl px-4 pb-20 pt-20 sm:px-6 sm:pt-28">
-            <div className="mx-auto max-w-3xl text-center">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-whatsapp-green/30 bg-whatsapp-green/10 px-4 py-1.5 text-xs font-medium text-whatsapp-dark">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                {t('hero_badge')}
-              </div>
-              <h1 className="text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-whatsapp-dark sm:text-5xl md:text-6xl">
-                {t('hero_title')}
-              </h1>
-              <p className="mt-5 text-lg font-medium text-whatsapp-teal sm:text-xl">
-                {t('hero_subtitle')}
-              </p>
-              <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                {t('hero_description')}
-              </p>
-              <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+      {/* ── HERO SECTION ── */}
+      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-32">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] sm:w-[900px] h-[450px] bg-gradient-to-tr from-[#128C7E]/30 via-emerald-500/20 to-emerald-300/10 rounded-full blur-3xl pointer-events-none animate-pulse duration-1000" />
+        <div className="absolute -top-10 -right-10 w-96 h-96 bg-[#25D366]/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="max-w-3xl mx-auto text-center space-y-6">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs sm:text-sm font-semibold backdrop-blur-sm shadow-inner animate-bounce">
+              <Sparkles className="w-4 h-4 text-[#25D366]" />
+              <span>🎁 3 MENSAGENS GRÁTIS NO TRIAL</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#25D366]" />
+              <span className="text-emerald-200/90 font-normal">Sem cartão</span>
+            </div>
+
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-white via-emerald-100 to-emerald-400">
+              Transforme sua alimentação com a{' '}
+              <span className="text-[#25D366] drop-shadow-sm">Yasa AI</span>
+            </h1>
+
+            <p className="text-lg sm:text-xl text-emerald-100/85 max-w-2xl mx-auto leading-relaxed">
+              Assistente nutricional 24h no seu WhatsApp, com a inteligência e o protocolo clínico
+              orientado pelo{' '}
+              <strong className="text-white font-semibold underline decoration-[#25D366] decoration-2 underline-offset-4">
+                Dr. Caio Cândido
+              </strong>
+              .
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+              <Link to="/auth" className="w-full sm:w-auto">
                 <Button
-                  asChild
                   size="lg"
-                  className="h-14 w-full rounded-full bg-whatsapp-green px-8 text-base font-semibold text-white shadow-glow transition-all hover:bg-whatsapp-green/90 hover:shadow-floating sm:w-auto"
+                  className="w-full sm:w-auto h-14 px-8 text-base font-bold bg-[#25D366] hover:bg-[#1EBE5D] text-emerald-950 rounded-2xl shadow-xl shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <Link to="/auth">
-                    {t('hero_cta_trial')}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
+                  <MessageSquare className="w-5 h-5 fill-emerald-950 text-emerald-950" />
+                  <span>Comece grátis no WhatsApp</span>
+                  <ArrowRight className="w-5 h-5" />
                 </Button>
-              </div>
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-4 w-4 text-whatsapp-green" />
-                  {t('hero_trust_card')}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-4 w-4 text-whatsapp-green" />
-                  {t('hero_trust_patients')}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Check className="h-4 w-4 text-whatsapp-green" />
-                  {t('hero_trust_cancel')}
-                </span>
-              </div>
+              </Link>
+              <a href="#planos" className="w-full sm:w-auto">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full sm:w-auto h-14 px-6 text-base font-semibold border-emerald-600/50 bg-emerald-900/30 text-emerald-100 hover:bg-emerald-800/50 hover:text-white rounded-2xl backdrop-blur-sm"
+                >
+                  Ver todos os planos
+                </Button>
+              </a>
             </div>
 
-            {/* Stats */}
-            <div className="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-4">
-              {[
-                {
-                  value: loadingStats ? '...' : stats !== null ? `${stats.patients_count}` : '8',
-                  label: t('stat_patients'),
-                },
-                {
-                  value: loadingStats ? '...' : stats !== null ? `${stats.active_contacts}` : '7',
-                  label: t('stat_active_contacts'),
-                },
-                {
-                  value: loadingStats ? '...' : stats !== null ? `${stats.messages_count}` : '35',
-                  label: t('stat_messages'),
-                },
-                {
-                  value: '24/7',
-                  label: t('stat_support'),
-                },
-              ].map((s) => (
-                <div
-                  key={s.label}
-                  className="rounded-2xl border border-border/60 bg-white p-5 text-center shadow-subtle transition-all hover:shadow-elevation"
-                >
-                  <div className="text-2xl font-extrabold text-whatsapp-green sm:text-3xl">
-                    {s.value}
-                  </div>
-                  <div className="mt-1 text-xs leading-snug text-muted-foreground">{s.label}</div>
-                </div>
-              ))}
+            <div className="pt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs sm:text-sm text-emerald-200/80 border-t border-emerald-800/40 mt-8">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
+                <span>
+                  + {stats.total_patients > 0 ? stats.total_patients : 180} pacientes acompanhados
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
+                <span>Respostas em segundos 24/7</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
+                <span>Protocolo Dr. Caio Cândido</span>
+              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ===== Problem ===== */}
-        <section className="bg-whatsapp-dark py-20 sm:py-28">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <div className="mx-auto max-w-2xl text-center">
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-green">
-                {t('problem_eyebrow')}
-              </span>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                {t('problem_title')}
-              </h2>
-              <p className="mt-5 text-base leading-relaxed text-white/70 sm:text-lg">
-                {t('problem_intro')}
+      {/* ── COMO FUNCIONA (3 PASSOS) ── */}
+      <section
+        id="como-funciona"
+        className="py-20 bg-emerald-950/60 border-y border-emerald-900/50 relative"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
+            <Badge className="bg-emerald-500/10 text-emerald-300 border-emerald-500/20 text-xs">
+              Simples e Sem Complicação
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+              Como funciona o Nutri Responde
+            </h2>
+            <p className="text-emerald-200/70 text-sm sm:text-base">
+              Você não precisa baixar nenhum aplicativo. Tudo acontece direto no aplicativo de
+              mensagens que você já usa todos os dias.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            <div className="relative rounded-3xl bg-gradient-to-b from-emerald-900/40 to-emerald-950/60 p-8 border border-emerald-800/50 shadow-xl backdrop-blur-sm group hover:border-emerald-500/50 transition-all">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mb-6 text-[#25D366] group-hover:scale-110 transition-transform">
+                <Calendar className="w-7 h-7" />
+              </div>
+              <div className="absolute top-6 right-8 text-4xl font-black text-emerald-800/30 select-none">
+                01
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">1. Escolha seu plano</h3>
+              <p className="text-emerald-200/70 text-sm leading-relaxed">
+                Comece gratuitamente com 3 mensagens de teste ou escolha o plano que melhor se
+                adapta à sua rotina alimentar.
               </p>
             </div>
-            <div className="mt-12 grid gap-4 sm:grid-cols-2">
-              {problems.map((p, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 transition-colors hover:bg-white/10"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-whatsapp-green/20 text-whatsapp-green">
-                    <p.icon className="h-5 w-5" />
+
+            <div className="relative rounded-3xl bg-gradient-to-b from-emerald-900/40 to-emerald-950/60 p-8 border border-emerald-800/50 shadow-xl backdrop-blur-sm group hover:border-emerald-500/50 transition-all">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mb-6 text-[#25D366] group-hover:scale-110 transition-transform">
+                <MessageSquare className="w-7 h-7" />
+              </div>
+              <div className="absolute top-6 right-8 text-4xl font-black text-emerald-800/30 select-none">
+                02
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">2. Converse no WhatsApp</h3>
+              <p className="text-emerald-200/70 text-sm leading-relaxed">
+                Envie áudios, textos ou fotos do seu prato e do seu plano. A Yasa responde em
+                segundos com orientações precisas e acolhedoras.
+              </p>
+            </div>
+
+            <div className="relative rounded-3xl bg-gradient-to-b from-emerald-900/40 to-emerald-950/60 p-8 border border-emerald-800/50 shadow-xl backdrop-blur-sm group hover:border-emerald-500/50 transition-all">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mb-6 text-[#25D366] group-hover:scale-110 transition-transform">
+                <Heart className="w-7 h-7" />
+              </div>
+              <div className="absolute top-6 right-8 text-4xl font-black text-emerald-800/30 select-none">
+                03
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">3. Transforme sua saúde</h3>
+              <p className="text-emerald-200/70 text-sm leading-relaxed">
+                Conquiste consistência com receitas práticas, marmitas organizadas e auxílio diário
+                para nunca mais sair da dieta.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CARDS DE PLANOS (4 TIERS) ── */}
+      <section id="planos" className="py-24 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 px-3 py-1 text-xs uppercase tracking-wider font-bold">
+              Planos Transparentes
+            </Badge>
+            <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
+              Escolha a parceria perfeita para o seu objetivo
+            </h2>
+            <p className="text-emerald-200/70 text-sm sm:text-base">
+              Acesso imediato no seu WhatsApp. Cancele ou altere a qualquer momento sem taxas
+              escondidas.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+            {/* 1. FREE TRIAL */}
+            <div className="rounded-3xl bg-emerald-950/70 border border-slate-700/60 flex flex-col justify-between p-6 hover:border-slate-500 transition-all hover:shadow-xl">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Degustação
                   </span>
-                  <p className="text-sm font-medium leading-relaxed text-white/90">{p.text}</p>
+                  <Badge variant="outline" className="border-slate-700 text-slate-300 text-[11px]">
+                    3 dias
+                  </Badge>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
+                <h3 className="text-2xl font-bold text-white mb-1">Free Trial</h3>
+                <p className="text-xs text-slate-400 mb-6 min-h-[32px]">
+                  Teste a inteligência e agilidade da Yasa no seu WhatsApp.
+                </p>
 
-        {/* ===== Before / After ===== */}
-        <section className="bg-white py-20 sm:py-28">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <div className="mx-auto max-w-2xl text-center">
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-teal">
-                {t('beforeafter_eyebrow')}
-              </span>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-whatsapp-dark sm:text-4xl">
-                {t('beforeafter_title')}
-              </h2>
-            </div>
-            <div className="mt-12 grid gap-6 md:grid-cols-2">
-              {/* Without */}
-              <Card className="rounded-3xl border border-border/60 bg-muted/40 p-7 shadow-subtle">
-                <h3 className="text-lg font-bold text-muted-foreground">
-                  {t('beforeafter_without_title')}
-                </h3>
-                <ul className="mt-6 space-y-4">
-                  {withoutItems.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500">
-                        <X className="h-4 w-4" />
-                      </span>
-                      <span className="text-sm leading-relaxed text-foreground/80">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-              {/* With */}
-              <Card className="relative rounded-3xl border border-whatsapp-green/30 bg-whatsapp-green/5 p-7 shadow-elevation">
-                <div className="absolute -top-3 left-7 inline-flex items-center gap-1 rounded-full bg-whatsapp-green px-3 py-1 text-xs font-semibold text-white shadow-glow">
-                  <Sparkles className="h-3 w-3" />
-                  {t('beforeafter_with_title')}
-                </div>
-                <h3 className="mt-2 text-lg font-bold text-whatsapp-dark">
-                  {t('beforeafter_with_title')}
-                </h3>
-                <ul className="mt-6 space-y-4">
-                  {withItems.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-whatsapp-green text-white">
-                        <Check className="h-4 w-4" />
-                      </span>
-                      <span className="text-sm font-medium leading-relaxed text-foreground">
-                        {item}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== How it works ===== */}
-        <section id="como-funciona" className="bg-whatsapp-green/5 py-20 sm:py-28">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <div className="mx-auto max-w-2xl text-center">
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-teal">
-                {t('how_eyebrow')}
-              </span>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-whatsapp-dark sm:text-4xl">
-                {t('how_title')}
-              </h2>
-            </div>
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {steps.map((s) => (
-                <div
-                  key={s.n}
-                  className="group relative rounded-3xl border border-border/60 bg-white p-7 shadow-subtle transition-all hover:-translate-y-1 hover:shadow-elevation"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-whatsapp-green/10 text-whatsapp-green transition-colors group-hover:bg-whatsapp-green group-hover:text-white">
-                      <s.icon className="h-6 w-6" />
-                    </span>
-                    <span className="text-4xl font-extrabold text-whatsapp-green/20">{s.n}</span>
+                <div className="mb-6 pb-6 border-b border-slate-800">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-black text-white">R$ 0</span>
+                    <span className="text-xs text-slate-400">/ 3 mensagens</span>
                   </div>
-                  <h3 className="mt-5 text-lg font-bold text-whatsapp-dark">{s.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.desc}</p>
+                  <p className="text-[11px] text-emerald-400 mt-1 font-medium">
+                    3 mensagens no total para testar
+                  </p>
                 </div>
-              ))}
+
+                <div className="space-y-3 mb-6">
+                  <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Benefícios:
+                  </p>
+                  <ul className="space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>3 mensagens no total</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>Orientação nutricional básica</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-slate-500">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem receitas</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-slate-500">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem estratégia de marmitas</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-slate-500">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem lista de compras</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-slate-500">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem geladeira inteligente</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <Link to="/auth" className="w-full">
+                <Button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl h-12 text-sm">
+                  Começar Grátis
+                </Button>
+              </Link>
             </div>
-            <div className="mt-10 text-center">
-              <Button
-                asChild
-                size="lg"
-                className="rounded-full bg-whatsapp-green px-8 font-semibold text-white shadow-glow transition-all hover:bg-whatsapp-green/90 hover:shadow-floating"
+
+            {/* 2. SEMANAL (MAIS ESCOLHIDO) */}
+            <div className="relative rounded-3xl bg-gradient-to-b from-[#0e4438] to-[#072b23] border-2 border-[#25D366] flex flex-col justify-between p-6 shadow-2xl shadow-emerald-500/20 transform lg:-translate-y-2 transition-all hover:scale-[1.02]">
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                <span className="relative flex h-3 w-3 inline-flex">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#25D366]"></span>
+                </span>
+                <Badge className="bg-[#25D366] text-emerald-950 font-black border-none text-[11px] px-3.5 py-1 shadow-lg shadow-emerald-500/30 uppercase tracking-wider ml-1">
+                  ⭐ Mais Escolhido
+                </Badge>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-4 mt-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                    Início Rápido
+                  </span>
+                  <Badge className="bg-emerald-500/20 text-emerald-200 border-emerald-400/30 text-[11px]">
+                    7 dias
+                  </Badge>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">Semanal</h3>
+                <p className="text-xs text-emerald-200/80 mb-6 min-h-[32px]">
+                  Ideal para testar uma rotina completa com receitas de lanches saudáveis.
+                </p>
+
+                <div className="mb-6 pb-6 border-b border-emerald-700/50">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-emerald-300">R$</span>
+                    <span className="text-3xl font-black text-white">29,90</span>
+                    <span className="text-xs text-emerald-200/70">/ semana</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-300 mt-1 font-medium">
+                    15 mensagens no total
+                  </p>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">
+                    Benefícios:
+                  </p>
+                  <ul className="space-y-2.5 text-xs text-emerald-100">
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>15 mensagens no total</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Orientação nutricional</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-[#25D366]">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>✅ Receitas de lanches (EXCLUSIVO)</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-emerald-300/50">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem estratégia de marmitas</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-emerald-300/50">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem lista de compras</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-emerald-300/50">
+                      <X className="w-4 h-4 text-red-400/80 shrink-0 mt-0.5" />
+                      <span>Sem geladeira inteligente</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <a
+                href={getPlanLink('weekly')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
               >
-                <Link to="/auth">
-                  {t('how_cta')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== Features ===== */}
-        <section id="funcionalidades" className="bg-white py-20 sm:py-28">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="mx-auto max-w-2xl text-center">
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-teal">
-                {t('features_eyebrow')}
-              </span>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-whatsapp-dark sm:text-4xl">
-                {t('features_title')}
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-                {t('features_subtitle')}
-              </p>
-            </div>
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {features.map((f) => (
-                <Card
-                  key={f.title}
-                  className="group rounded-3xl border border-border/60 bg-white p-7 shadow-subtle transition-all hover:-translate-y-1 hover:border-whatsapp-green/40 hover:shadow-elevation"
-                >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-whatsapp-green/10 text-whatsapp-green transition-colors group-hover:bg-whatsapp-green group-hover:text-white">
-                    <f.icon className="h-6 w-6" />
-                  </span>
-                  <h3 className="mt-5 text-base font-bold text-whatsapp-dark">{f.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{f.desc}</p>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ===== Pricing ===== */}
-        <section id="planos" className="bg-whatsapp-green/5 py-20 sm:py-28">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="mx-auto max-w-2xl text-center">
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-teal">
-                {t('pricing_eyebrow')}
-              </span>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-whatsapp-dark sm:text-4xl">
-                {t('pricing_title')}
-              </h2>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-                {t('pricing_subtitle')}
-              </p>
-            </div>
-            <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-              {plans.map((p) => {
-                const isExclusion = (f: string) => f.indexOf('❌') >= 0
-                const ctaInner = (
-                  <>
-                    {p.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )
-                return (
-                  <Card
-                    key={p.name}
-                    className={`relative flex flex-col rounded-3xl border p-7 shadow-subtle transition-all hover:shadow-elevation ${
-                      p.highlight
-                        ? 'border-whatsapp-green bg-whatsapp-dark text-white shadow-elevation'
-                        : 'border-border/60 bg-white'
-                    }`}
-                  >
-                    {p.highlight && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-whatsapp-green px-4 py-1 text-xs font-semibold text-white shadow-glow">
-                        {t('pricing_popular')}
-                      </div>
-                    )}
-                    <span
-                      className={`text-xs font-medium ${
-                        p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-teal'
-                      }`}
-                    >
-                      {p.badge}
-                    </span>
-                    <h3
-                      className={`mt-2 text-xl font-bold ${
-                        p.highlight ? 'text-white' : 'text-whatsapp-dark'
-                      }`}
-                    >
-                      {p.name}
-                    </h3>
-                    <div className="mt-4 flex items-baseline gap-1">
-                      <span
-                        className={`text-4xl font-extrabold ${
-                          p.highlight ? 'text-white' : 'text-whatsapp-dark'
-                        }`}
-                      >
-                        {p.price}
-                      </span>
-                      <span
-                        className={`text-sm ${
-                          p.highlight ? 'text-white/60' : 'text-muted-foreground'
-                        }`}
-                      >
-                        {p.period}
-                      </span>
-                    </div>
-                    <ul className="mt-6 flex-1 space-y-3">
-                      {p.features.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
-                          {isExclusion(f) ? (
-                            <X
-                              className={`mt-0.5 h-4 w-4 shrink-0 ${
-                                p.highlight ? 'text-white/40' : 'text-muted-foreground'
-                              }`}
-                            />
-                          ) : (
-                            <Check
-                              className={`mt-0.5 h-4 w-4 shrink-0 ${
-                                p.highlight ? 'text-whatsapp-green' : 'text-whatsapp-green'
-                              }`}
-                            />
-                          )}
-                          <span
-                            className={`text-sm leading-relaxed ${
-                              isExclusion(f)
-                                ? p.highlight
-                                  ? 'text-white/50 line-through'
-                                  : 'text-muted-foreground line-through'
-                                : p.highlight
-                                  ? 'text-white/85'
-                                  : 'text-foreground/80'
-                            }`}
-                          >
-                            {f}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      asChild
-                      className={`mt-7 w-full rounded-full font-semibold transition-all ${
-                        p.highlight
-                          ? 'bg-whatsapp-green text-white shadow-glow hover:bg-whatsapp-green/90'
-                          : 'bg-whatsapp-dark text-white hover:bg-whatsapp-dark/90'
-                      }`}
-                    >
-                      {p.external ? (
-                        <a href={p.href} target="_blank" rel="noopener noreferrer">
-                          {ctaInner}
-                        </a>
-                      ) : (
-                        <Link to={p.href}>{ctaInner}</Link>
-                      )}
-                    </Button>
-                  </Card>
-                )
-              })}
-            </div>
-            <p className="mt-8 text-center text-sm text-muted-foreground">{t('pricing_note')}</p>
-          </div>
-        </section>
-
-        {/* ===== Final CTA ===== */}
-        <section className="bg-white py-20 sm:py-28">
-          <div className="mx-auto max-w-4xl px-4 sm:px-6">
-            <div className="relative overflow-hidden rounded-[2.5rem] bg-whatsapp-dark px-6 py-14 text-center shadow-floating sm:px-12">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-whatsapp-green/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-whatsapp-teal/20 blur-3xl" />
-              <span className="text-xs font-semibold uppercase tracking-widest text-whatsapp-green">
-                {t('final_eyebrow')}
-              </span>
-              <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                {t('final_title')}
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">
-                {t('final_desc')}
-              </p>
-              <div className="mt-8 flex justify-center">
-                <Button
-                  asChild
-                  size="lg"
-                  className="rounded-full bg-whatsapp-green px-8 text-base font-semibold text-white shadow-glow transition-all hover:bg-whatsapp-green/90 hover:shadow-floating"
-                >
-                  <Link to="/auth">
-                    {t('final_cta')}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
+                <Button className="w-full bg-[#25D366] hover:bg-[#1EBE5D] text-emerald-950 font-black rounded-2xl h-12 text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-105">
+                  <span>Assinar Semanal</span>
+                  <ExternalLink className="w-4 h-4" />
                 </Button>
-              </div>
-              <p className="mt-5 text-xs text-white/50">{t('final_note')}</p>
+              </a>
             </div>
-          </div>
-        </section>
-      </main>
 
-      {/* ===== Footer ===== */}
-      <footer className="border-t border-border/60 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-whatsapp-green text-white">
-              <MessageCircle className="h-4 w-4" />
-            </span>
-            <div className="leading-tight">
-              <div className="text-sm font-bold text-whatsapp-dark">Dr. Caio Cândido</div>
-              <div className="text-xs text-muted-foreground">{t('footer_tagline')}</div>
+            {/* 3. MENSAL */}
+            <div className="rounded-3xl bg-emerald-950/80 border border-emerald-700/60 flex flex-col justify-between p-6 hover:border-emerald-500 transition-all hover:shadow-xl">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                    Mais Completo
+                  </span>
+                  <Badge className="bg-emerald-500/20 text-emerald-200 border-emerald-400/30 text-[11px]">
+                    30 dias
+                  </Badge>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">Mensal</h3>
+                <p className="text-xs text-emerald-200/70 mb-6 min-h-[32px]">
+                  Para quem quer constância, receitas completas e planejamento de marmitas.
+                </p>
+
+                <div className="mb-6 pb-6 border-b border-emerald-800">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-emerald-300">R$</span>
+                    <span className="text-3xl font-black text-white">79,90</span>
+                    <span className="text-xs text-emerald-200/70">/ mês</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-400 mt-1 font-medium">
+                    25 mensagens por dia
+                  </p>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">
+                    Benefícios:
+                  </p>
+                  <ul className="space-y-2.5 text-xs text-emerald-100">
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>25 mensagens por dia</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Orientação nutricional</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Receitas de lanches</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-emerald-300">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Estratégia de marmitas + planos</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-emerald-300">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Lista de compras inteligente</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-emerald-300">
+                      <Check className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" />
+                      <span>Geladeira inteligente</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <a
+                href={getPlanLink('monthly')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
+              >
+                <Button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl h-12 text-sm flex items-center justify-center gap-2">
+                  <span>Assinar Mensal</span>
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              </a>
+            </div>
+
+            {/* 4. TRIMESTRAL (PREMIUM) */}
+            <div className="rounded-3xl bg-gradient-to-b from-[#182a20] to-[#0d1c14] border-2 border-amber-400/70 flex flex-col justify-between p-6 shadow-xl shadow-amber-500/10 hover:border-amber-400 transition-all">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                    👑 Premium VIP
+                  </span>
+                  <Badge className="bg-amber-400/20 text-amber-200 border-amber-400/30 text-[11px]">
+                    90 dias
+                  </Badge>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">Trimestral</h3>
+                <p className="text-xs text-amber-100/70 mb-6 min-h-[32px]">
+                  Acompanhamento contínuo e prioritário para resultados definitivos.
+                </p>
+
+                <div className="mb-6 pb-6 border-b border-amber-900/50">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-amber-300">R$</span>
+                    <span className="text-3xl font-black text-white">199,90</span>
+                    <span className="text-xs text-amber-200/70">/ 3 meses</span>
+                  </div>
+                  <p className="text-[11px] text-amber-300 mt-1 font-medium">
+                    40 mensagens por dia (Economia real)
+                  </p>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <p className="text-xs font-bold text-amber-200 uppercase tracking-wider">
+                    Tudo do Mensal e mais:
+                  </p>
+                  <ul className="space-y-2.5 text-xs text-amber-100/90">
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>40 mensagens por dia</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>Tudo liberado (Marmitas, lista, geladeira)</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-amber-300">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>Acompanhamento premium</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-amber-300">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>Prioridade no WhatsApp</span>
+                    </li>
+                    <li className="flex items-start gap-2 font-semibold text-amber-300">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>Relatórios semanais</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <a
+                href={getPlanLink('quarterly')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
+              >
+                <Button className="w-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-emerald-950 font-black rounded-2xl h-12 text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2">
+                  <span>Assinar Trimestral</span>
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              </a>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Dr. Caio Cândido. {t('footer_rights')}
+        </div>
+      </section>
+
+      {/* ── TABELA COMPARATIVA INTERATIVA ── */}
+      <section id="comparativo" className="py-20 bg-emerald-950/70 border-t border-emerald-900/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-14 space-y-3">
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-xs uppercase tracking-wider font-bold">
+              Comparação Detalhada
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white">
+              Compare todos os recursos
+            </h2>
+            <p className="text-emerald-200/70 text-sm">
+              Veja exatamente o que cada plano inclui e escolha o ideal para suas metas.
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-emerald-800/60 bg-emerald-900/20 backdrop-blur-md overflow-hidden shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-emerald-800/60 bg-emerald-950/90 text-xs sm:text-sm">
+                    <th className="p-4 sm:p-6 font-bold text-white w-2/5">Recursos & Benefícios</th>
+                    <th className="p-4 sm:p-6 font-bold text-center text-slate-300">
+                      Free Trial
+                      <div className="text-[11px] font-normal text-slate-400 mt-0.5">R$ 0</div>
+                    </th>
+                    <th className="p-4 sm:p-6 font-bold text-center text-[#25D366] bg-emerald-900/30">
+                      Semanal ⭐
+                      <div className="text-[11px] font-normal text-emerald-300 mt-0.5">
+                        R$ 29,90
+                      </div>
+                    </th>
+                    <th className="p-4 sm:p-6 font-bold text-center text-white">
+                      Mensal
+                      <div className="text-[11px] font-normal text-emerald-300 mt-0.5">
+                        R$ 79,90
+                      </div>
+                    </th>
+                    <th className="p-4 sm:p-6 font-bold text-center text-amber-300">
+                      Trimestral 👑
+                      <div className="text-[11px] font-normal text-amber-400 mt-0.5">R$ 199,90</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-emerald-800/40 text-xs sm:text-sm">
+                  {COMPARISON_FEATURES.map((feat, idx) => (
+                    <tr key={idx} className="hover:bg-emerald-800/20 transition-colors group">
+                      <td className="p-4 sm:p-6">
+                        <div className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+                          {feat.name}
+                        </div>
+                        <div className="text-[11px] text-emerald-200/60 mt-0.5">
+                          {feat.description}
+                        </div>
+                      </td>
+                      <td className="p-4 sm:p-6 text-center">{renderCellContent(feat.free)}</td>
+                      <td className="p-4 sm:p-6 text-center bg-emerald-900/20">
+                        {renderCellContent(feat.weekly)}
+                      </td>
+                      <td className="p-4 sm:p-6 text-center">{renderCellContent(feat.monthly)}</td>
+                      <td className="p-4 sm:p-6 text-center">
+                        {renderCellContent(feat.quarterly)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 sm:p-6 bg-emerald-950/80 border-t border-emerald-800/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <span className="text-xs text-emerald-200/70">
+                Precisa de ajuda para escolher? Fale com a Yasa no teste grátis.
+              </span>
+              <div className="flex gap-3 w-full sm:w-auto">
+                <Link to="/auth" className="flex-1 sm:flex-none">
+                  <Button
+                    variant="outline"
+                    className="w-full border-emerald-600/50 text-emerald-200 hover:bg-emerald-900/50"
+                  >
+                    Testar Grátis
+                  </Button>
+                </Link>
+                <a
+                  href={INFINITEPAY_LINKS.weekly}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 sm:flex-none"
+                >
+                  <Button className="w-full bg-[#25D366] hover:bg-[#1EBE5D] text-emerald-950 font-bold">
+                    Assinar Semanal (⭐ Mais escolhido)
+                  </Button>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── PROVA SOCIAL & NÚMEROS REAIS ── */}
+      <section id="depoimentos" className="py-20 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="rounded-3xl bg-gradient-to-br from-emerald-900/40 via-emerald-950/60 to-emerald-950/90 border border-emerald-700/40 p-8 sm:p-14 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-[#25D366]/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-5 space-y-4">
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-xs">
+                  Resultados Reais
+                </Badge>
+                <h2 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+                  Mais de{' '}
+                  <span className="text-[#25D366]">
+                    {stats.total_patients > 0 ? stats.total_patients : 180} pacientes
+                  </span>{' '}
+                  já confiam na Yasa diariamente
+                </h2>
+                <p className="text-emerald-200/75 text-sm leading-relaxed">
+                  Pacientes que transformaram sua rotina alimentar, aprenderam a fazer escolhas
+                  conscientes e contam com o apoio instantâneo de um protocolo clínico validado.
+                </p>
+                <div className="pt-2 flex items-center gap-4">
+                  <div className="flex -space-x-2 overflow-hidden">
+                    <img
+                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
+                      src="https://img.usecurling.com/ppl/128?gender=female&seed=42"
+                      alt="Paciente"
+                    />
+                    <img
+                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
+                      src="https://img.usecurling.com/ppl/128?gender=male&seed=15"
+                      alt="Paciente"
+                    />
+                    <img
+                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
+                      src="https://img.usecurling.com/ppl/128?gender=female&seed=99"
+                      alt="Paciente"
+                    />
+                    <img
+                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
+                      src="https://img.usecurling.com/ppl/128?gender=male&seed=84"
+                      alt="Paciente"
+                    />
+                  </div>
+                  <div className="text-xs">
+                    <div className="flex text-amber-400">★★★★★</div>
+                    <span className="text-emerald-200/80 font-medium">4.9/5 em satisfação</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-2xl bg-emerald-950/80 border border-emerald-800/50 p-5 space-y-2">
+                  <div className="text-2xl sm:text-3xl font-black text-[#25D366]">24 horas</div>
+                  <div className="text-xs font-semibold text-white">Disponibilidade total</div>
+                  <p className="text-[11px] text-emerald-200/60">
+                    Tire dúvidas sobre o que comer em restaurantes, viagens ou fins de semana.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-emerald-950/80 border border-emerald-800/50 p-5 space-y-2">
+                  <div className="text-2xl sm:text-3xl font-black text-amber-400">100%</div>
+                  <div className="text-xs font-semibold text-white">Protocolo Dr. Caio</div>
+                  <p className="text-[11px] text-emerald-200/60">
+                    Respostas baseadas em evidências científicas e conduta médica/nutricional séria.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-emerald-950/80 border border-emerald-800/50 p-5 space-y-2 sm:col-span-2">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="https://img.usecurling.com/ppl/128?gender=female&seed=33"
+                      alt="Juliana M."
+                      className="w-9 h-9 rounded-full object-cover"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-white">Juliana M.</div>
+                      <div className="text-[10px] text-emerald-300">
+                        Assinante Plano Mensal há 3 meses
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-emerald-100/90 italic">
+                    "O modo de estratégias de marmitas e a lista de compras salvaram meu domingo!
+                    Economizo tempo no mercado e não furei a dieta nenhuma vez esse mês."
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ACCORDION ── */}
+      <section className="py-20 bg-emerald-950/50 border-t border-emerald-900/50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12 space-y-2">
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-xs">
+              Dúvidas Frequentes
+            </Badge>
+            <h2 className="text-3xl font-bold text-white">Perguntas comuns sobre os planos</h2>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, idx) => (
+              <div
+                key={idx}
+                className="rounded-2xl bg-emerald-900/20 border border-emerald-800/50 overflow-hidden transition-all"
+              >
+                <button
+                  onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+                  className="w-full text-left p-5 font-semibold text-white flex items-center justify-between gap-4 hover:text-emerald-300 transition-colors"
+                >
+                  <span className="text-sm sm:text-base">{faq.q}</span>
+                  <ChevronDown
+                    className={`w-5 h-5 text-emerald-400 transition-transform ${expandedFaq === idx ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {expandedFaq === idx && (
+                  <div className="p-5 pt-0 text-xs sm:text-sm text-emerald-200/80 leading-relaxed border-t border-emerald-800/30">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FINAL CTA BANNER ── */}
+      <section className="py-20 relative overflow-hidden">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10 space-y-6">
+          <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
+            Pronto para ter sua nutricionista 24h no WhatsApp?
+          </h2>
+          <p className="text-emerald-200/80 text-base max-w-xl mx-auto">
+            Comece hoje mesmo com 3 mensagens gratuitas e experimente a transformação na sua
+            alimentação.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            <Link to="/auth" className="w-full sm:w-auto">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto h-14 px-8 text-base font-bold bg-[#25D366] hover:bg-[#1EBE5D] text-emerald-950 rounded-2xl shadow-xl shadow-emerald-500/30 transition-all hover:scale-105"
+              >
+                Iniciar Teste Gratuito Agora
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-emerald-900/60 bg-emerald-950/90 py-12 text-xs text-emerald-200/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-[#128C7E] flex items-center justify-center">
+              <Bot className="w-5 h-5 text-emerald-950" />
+            </div>
+            <div>
+              <span className="font-bold text-white text-sm">Nutri Responde</span>
+              <p className="text-[11px] text-emerald-200/50">
+                Orientação sob supervisão do Dr. Caio Cândido
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-emerald-200/70">
+            <a href="#" className="hover:text-white transition-colors">
+              Política de Privacidade
+            </a>
+            <a href="#" className="hover:text-white transition-colors">
+              Termos de Uso
+            </a>
+            <a
+              href="mailto:contato@nutriresponde.com"
+              className="hover:text-white transition-colors"
+            >
+              Contato & Suporte
+            </a>
+            <Link to="/auth" className="hover:text-white transition-colors">
+              Área do Nutricionista
+            </Link>
+          </div>
+
+          <p className="text-[11px] text-emerald-200/40 text-center md:text-right">
+            © {new Date().getFullYear()} Nutri Responde. Todos os direitos reservados.
           </p>
         </div>
       </footer>

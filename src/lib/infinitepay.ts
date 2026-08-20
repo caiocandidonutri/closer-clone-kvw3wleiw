@@ -19,16 +19,15 @@ export interface SubscriptionPlan {
 export const FALLBACK_PLANS: SubscriptionPlan[] = [
   {
     id: 'plan_free_trial',
-    name: 'Free Trial',
+    name: 'Grátis',
     slug: 'free_trial',
-    description: 'Experimente a Yasa gratuitamente por 3 dias.',
+    description: 'Experimente a Yasa com orientação nutricional básica.',
     price_brl: 0,
     duration_days: 3,
     message_limit: 3,
     limit_type: 'total',
     has_all_features: false,
     benefits: [
-      '3 mensagens no total',
       'Orientação nutricional básica',
       '❌ Sem receitas',
       '❌ Sem estratégia de marmitas',
@@ -43,16 +42,15 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     id: 'plan_weekly',
     name: 'Semanal',
     slug: 'weekly',
-    description: 'Ideal para experimentar uma rotina com receitas de lanches saudáveis.',
+    description: 'Ideal para uma rotina prática com receitas de lanches saudáveis.',
     price_brl: 29.9,
     duration_days: 7,
     message_limit: 15,
     limit_type: 'total',
     has_all_features: false,
     benefits: [
-      '15 mensagens no total',
       'Orientação nutricional',
-      '✅ Receitas de lanches',
+      'Receitas de lanches',
       '❌ Sem estratégia de marmitas',
       '❌ Sem lista de compras',
       '❌ Sem geladeira inteligente',
@@ -74,12 +72,11 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     limit_type: 'daily',
     has_all_features: true,
     benefits: [
-      '25 mensagens por dia',
       'Orientação nutricional',
-      '✅ Receitas de lanches',
-      '✅ Estratégia de marmitas + planos semanais',
-      '✅ Lista de compras inteligente',
-      '✅ Geladeira inteligente',
+      'Receitas de lanches',
+      'Estratégia de marmitas + planos semanais',
+      'Lista de compras inteligente',
+      'Geladeira inteligente',
     ],
     infinitepay_link: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
     infinitepay_order_nsu: 'nutri-monthly',
@@ -98,15 +95,10 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     limit_type: 'daily',
     has_all_features: true,
     benefits: [
-      '40 mensagens por dia',
-      'Tudo do plano Mensal',
-      '✅ Receitas de lanches e refeições',
-      '✅ Estratégia de marmitas + planos semanais',
-      '✅ Lista de compras inteligente',
-      '✅ Geladeira inteligente',
-      '✅ Acompanhamento premium',
-      '✅ Prioridade no WhatsApp',
-      '✅ Relatórios semanais',
+      'Tudo do Mensal',
+      'Acompanhamento premium',
+      'Prioridade no WhatsApp',
+      'Relatórios semanais',
     ],
     infinitepay_link: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
     infinitepay_order_nsu: 'nutri-quarterly',
@@ -121,3 +113,33 @@ export const INFINITEPAY_LINKS = {
   monthly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
   quarterly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
 } as const
+
+export const INFINITEPAY_FALLBACK_LINKS = INFINITEPAY_LINKS
+
+export async function createInfinitePayLinks(): Promise<{ success: boolean; message?: string }> {
+  try {
+    const { pb } = await import('@/lib/pocketbase/client')
+    const res = await pb.send<{ success: boolean; message?: string }>(
+      '/backend/v1/infinitepay/create-links',
+      {
+        method: 'POST',
+      },
+    )
+    return res
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.data?.message || err?.message || 'Falha ao gerar os links da InfinitePay',
+    }
+  }
+}
+
+export function resolveCheckoutUrl(
+  plan: SubscriptionPlan | { slug: string; infinitepay_link?: string },
+) {
+  if (plan.infinitepay_link) return plan.infinitepay_link
+  if (plan.slug === 'weekly') return INFINITEPAY_LINKS.weekly
+  if (plan.slug === 'monthly') return INFINITEPAY_LINKS.monthly
+  if (plan.slug === 'quarterly') return INFINITEPAY_LINKS.quarterly
+  return ''
+}

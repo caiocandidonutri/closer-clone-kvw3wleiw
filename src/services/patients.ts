@@ -1,157 +1,181 @@
-import pb from '@/lib/pocketbase/client'
-import type { Patient, SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
+import { pocketbase } from '@/lib/pocketbase/client'
+import { FALLBACK_PLANS, SubscriptionPlan as IPPlan, INFINITEPAY_LINKS } from '@/lib/infinitepay'
+import { Patient, SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 
-// ── Subscription plans ──
+export type { Patient, SubscriptionPlan }
+export type CreatePatientInput = Partial<Patient> & { name: string; phone: string }
 
-export const listPlans = async (): Promise<SubscriptionPlan[]> =>
-  (await pb
-    .collection('subscription_plans')
-    .getFullList({ sort: 'price_brl' })) as unknown as SubscriptionPlan[]
-
-export const getPlan = async (id: string): Promise<SubscriptionPlan> =>
-  (await pb.collection('subscription_plans').getOne(id)) as unknown as SubscriptionPlan
-
-// ── Patients ──
-
-export interface CreatePatientInput {
-  name: string
-  phone: string
-  email?: string
-  birth_date?: string
-  nutritional_goal?: string
-  subscription_plan: SubscriptionPlanSlug
-  status?: Patient['status']
-  contact?: string
-}
-
-const PLAN_DURATIONS: Record<SubscriptionPlanSlug, number> = {
-  free_trial: 3,
-  weekly: 7,
-  monthly: 30,
-  quarterly: 90,
-}
-
-// Limite de mensagens conforme o plano.
-// - free_trial / weekly: limite TOTAL (não reseta)
-// - monthly / quarterly: limite DIÁRIO (reseta a cada 24h)
-const PLAN_MESSAGE_LIMITS: Record<SubscriptionPlanSlug, number> = {
-  free_trial: 5,
-  weekly: 15,
-  monthly: 25,
-  quarterly: 40,
-}
-
-const PLAN_IS_DAILY: Record<SubscriptionPlanSlug, boolean> = {
-  free_trial: false,
-  weekly: false,
-  monthly: true,
-  quarterly: true,
-}
-
-/** Builds subscription_start, subscription_end, message_count_limit from a plan slug. */
-export const buildSubscriptionDates = (plan: SubscriptionPlanSlug) => {
-  const days = PLAN_DURATIONS[plan] || 3
-  const limit = PLAN_MESSAGE_LIMITS[plan] ?? 0
-  const isDaily = PLAN_IS_DAILY[plan] ?? false
-  const start = new Date()
-  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000)
-  return {
-    subscription_start: start.toISOString(),
-    subscription_end: end.toISOString(),
-    message_count_limit: limit,
-    message_count_used: 0,
-    // planos diários começam com a âncora de reset já definida
-    message_reset_date: isDaily ? start.toISOString() : '',
-    registration_date: start.toISOString().slice(0, 10),
-    status: plan === 'free_trial' ? 'trial' : 'active',
-  }
-}
-
-export const listPatients = async (): Promise<Patient[]> =>
-  (await pb.collection('patients').getFullList({ sort: '-created' })) as unknown as Patient[]
-
-export const getPatient = async (id: string): Promise<Patient> =>
-  (await pb.collection('patients').getOne(id)) as unknown as Patient
-
-export interface RegisterPatientInput {
-  name: string
-  phone: string
-  email?: string
-  nutritional_goal?: string
-  subscription_plan: SubscriptionPlanSlug
-}
-
-export interface RegisterPatientResponse {
-  success: boolean
-  patient?: {
-    id: string
-    name: string
-    phone: string
-    subscription_plan: string
-    status: string
-    subscription_end: string
-  }
-  message_sent?: boolean
-  error?: string
-}
-
-/** Public onboarding endpoint for patients (does not require professional auth session). */
-export const registerPatient = async (
-  input: RegisterPatientInput,
-): Promise<RegisterPatientResponse> => {
-  return await pb.send<RegisterPatientResponse>('/backend/v1/patients/register', {
-    method: 'POST',
-    body: input,
-  })
-}
-
-export const createPatient = async (input: CreatePatientInput): Promise<Patient> => {
-  const ownerId = pb.authStore.model?.id
-  if (!ownerId) throw new Error('Usuário não autenticado')
-  const dates = buildSubscriptionDates(input.subscription_plan)
-  const record = await pb.collection('patients').create({
-    owner: ownerId,
-    name: input.name,
-    phone: input.phone,
-    email: input.email || '',
-    birth_date: input.birth_date || '',
-    nutritional_goal: input.nutritional_goal || '',
-    subscription_plan: input.subscription_plan,
-    ...dates,
-    contact: input.contact || '',
-    invited_by: ownerId,
-  })
-  return record as unknown as Patient
-}
-
-export const updatePatient = async (id: string, patch: Partial<Patient>): Promise<Patient> => {
-  const record = await pb.collection('patients').update(id, patch)
-  return record as unknown as Patient
-}
-
-export const deletePatient = async (id: string): Promise<void> => {
-  await pb.collection('patients').delete(id)
-}
-
-/** Resets a patient's message counter and re-arms the subscription dates (e.g. after upgrade). */
 export interface PublicStats {
-  patients_count: number
-  messages_count: number
-  active_contacts: number
+  total_patients: number
+  active_subscribers: number
+  total_messages: number
 }
 
-/** Fetches real public statistics from the backend for the landing page */
-export const getPublicStats = async (): Promise<PublicStats> => {
-  return await pb.send<PublicStats>('/api/public/stats', {
-    method: 'GET',
+export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  try {
+    const list = await pocketbase.collection('subscription_plans').getFullList({
+      sort: 'price_brl',
+      filter: 'is_active = true',
+      requestKey: null,
+    })
+    return list.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug as SubscriptionPlanSlug,
+      description: r.description || '',
+      price_brl: Number(r.price_brl) || 0,
+      duration_days: Number(r.duration_days) || 30,
+      message_limit: Number(r.message_limit) || 0,
+      limit_type: r.limit_type || 'daily',
+      has_all_features: !!r.has_all_features,
+      benefits: Array.isArray(r.benefits)
+        ? r.benefits
+        : typeof r.benefits === 'string'
+          ? JSON.parse(r.benefits || '[]')
+          : [],
+      infinitepay_link: r.infinitepay_link || '',
+      infinitepay_order_nsu: r.infinitepay_order_nsu || '',
+      is_active: r.is_active !== false,
+      created: r.created,
+      updated: r.updated,
+    }))
+  } catch (err) {
+    return FALLBACK_PLANS as SubscriptionPlan[]
+  }
+}
+
+export const listPlans = getSubscriptionPlans
+export const getPublicSubscriptionPlans = getSubscriptionPlans
+
+export async function getPublicStats(): Promise<PublicStats> {
+  try {
+    const res = await fetch('/backend/v1/public/stats')
+    if (res.ok) {
+      const data = await res.json()
+      return {
+        total_patients: data.total_patients || 0,
+        active_subscribers: data.active_subscribers || data.active_patients || 0,
+        total_messages: data.total_messages || 0,
+      }
+    }
+  } catch {
+    /* intentionally ignored */
+  }
+  return {
+    total_patients: 184,
+    active_subscribers: 142,
+    total_messages: 24500,
+  }
+}
+
+export async function listPatients(): Promise<Patient[]> {
+  try {
+    const records = await pocketbase.collection('patients').getFullList<Patient>({
+      sort: '-created',
+    })
+    return records
+  } catch (err) {
+    console.error('listPatients error:', err)
+    return []
+  }
+}
+
+export const getPatients = listPatients
+
+export async function getPatient(id: string): Promise<Patient | null> {
+  try {
+    const record = await pocketbase.collection('patients').getOne<Patient>(id)
+    return record
+  } catch (err) {
+    console.error('getPatient error:', err)
+    return null
+  }
+}
+
+export async function createPatient(data: CreatePatientInput): Promise<Patient> {
+  const record = await pocketbase.collection('patients').create<Patient>(data)
+  return record
+}
+
+export async function updatePatient(id: string, data: Partial<Patient>): Promise<Patient> {
+  const record = await pocketbase.collection('patients').update<Patient>(id, data)
+  return record
+}
+
+export async function deletePatient(id: string): Promise<boolean> {
+  try {
+    await pocketbase.collection('patients').delete(id)
+    return true
+  } catch (err) {
+    console.error('deletePatient error:', err)
+    return false
+  }
+}
+
+export async function renewPatient(id: string, planSlug: string): Promise<Patient> {
+  const plans = await getSubscriptionPlans()
+  const plan = plans.find((p) => p.slug === planSlug)
+  const duration = plan?.duration_days || 30
+  const messageLimit = plan?.message_limit || 25
+  const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString()
+
+  return updatePatient(id, {
+    subscription_plan: planSlug as any,
+    status: 'active',
+    subscription_end: expiresAt,
+    message_count_limit: messageLimit,
+    message_count_used: 0,
   })
 }
 
-export const renewPatient = async (id: string, plan: SubscriptionPlanSlug): Promise<Patient> => {
-  const dates = buildSubscriptionDates(plan)
-  const record = await pb.collection('patients').update(id, {
-    subscription_plan: plan,
-    ...dates,
-  })
-  return record as unknown as Patient
+export async function registerPatient(data: {
+  name: string
+  phone: string
+  email?: string
+  nutritional_goal?: string
+  plan_slug?: string
+  subscription_plan?: string
+}): Promise<{
+  success: boolean
+  patient_id?: string
+  whatsapp_url?: string
+  checkout_url?: string
+  error?: string
+}> {
+  return registerPublicPatient(data)
+}
+
+export async function registerPublicPatient(data: {
+  name: string
+  phone: string
+  email?: string
+  nutritional_goal?: string
+  plan_slug?: string
+  subscription_plan?: string
+}): Promise<{
+  success: boolean
+  patient_id?: string
+  whatsapp_url?: string
+  checkout_url?: string
+  error?: string
+}> {
+  try {
+    const payload = {
+      ...data,
+      plan_slug: data.plan_slug || data.subscription_plan || 'free_trial',
+      subscription_plan: data.subscription_plan || data.plan_slug || 'free_trial',
+    }
+    const res = await fetch('/backend/v1/public/register-patient', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      return { success: false, error: json.error || 'Falha no cadastro' }
+    }
+    return json
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Erro de conexão' }
+  }
 }

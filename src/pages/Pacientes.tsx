@@ -29,6 +29,7 @@ const STATUS_LABELS: Record<PatientStatus, string> = {
   inactive: 'Inativo',
   trial: 'Trial',
   expired: 'Expirado',
+  cancelled: 'Cancelado',
 }
 
 const STATUS_BADGES: Record<PatientStatus, string> = {
@@ -36,6 +37,7 @@ const STATUS_BADGES: Record<PatientStatus, string> = {
   inactive: 'bg-gray-100 text-gray-600 border-gray-200',
   trial: 'bg-blue-100/60 text-blue-700 border-blue-200',
   expired: 'bg-red-100/60 text-red-700 border-red-200',
+  cancelled: 'bg-amber-100/60 text-amber-700 border-amber-200',
 }
 
 const PLAN_LABELS: Record<string, string> = {

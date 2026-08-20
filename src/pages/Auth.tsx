@@ -56,20 +56,20 @@ interface PlanDisplay {
 const STATIC_PLANS: PlanDisplay[] = [
   {
     slug: 'free_trial',
-    name: 'Free Trial',
+    name: 'Grátis',
     priceFormatted: 'R$ 0',
     priceNum: 0,
-    durationFormatted: '3 dias',
+    durationFormatted: '3 mensagens',
     durationDays: 3,
-    messageLimitLabel: '5 mensagens no total',
+    messageLimitLabel: '3 mensagens',
     icon: '🆓',
-    description: 'Experimente a assistente Yasa sem compromisso.',
+    description: 'Orientação nutricional básica sem cartão.',
     features: [
-      { text: '3 dias de acesso', included: true },
-      { text: '5 mensagens no total com a Yasa', included: true },
-      { text: 'Orientação nutricional e tirar dúvidas', included: true },
-      { text: 'Sem lista de compras inteligente', included: false },
-      { text: 'Sem modo "O que tenho na geladeira?"', included: false },
+      { text: 'Orientação nutricional básica', included: true },
+      { text: 'Receitas de lanches', included: false },
+      { text: 'Estratégia de marmitas', included: false },
+      { text: 'Lista de compras inteligente', included: false },
+      { text: 'Geladeira inteligente', included: false },
     ],
   },
   {
@@ -79,15 +79,16 @@ const STATIC_PLANS: PlanDisplay[] = [
     priceNum: 29.9,
     durationFormatted: '7 dias',
     durationDays: 7,
-    messageLimitLabel: '15 mensagens no total',
+    messageLimitLabel: '15 mensagens',
     icon: '📅',
-    description: 'Acompanhamento semanal com a Yasa.',
+    popular: true,
+    description: 'Orientação nutricional com receitas de lanches.',
     features: [
-      { text: '7 dias de acesso', included: true },
-      { text: '15 mensagens no total com a Yasa', included: true },
-      { text: 'Orientação nutricional e suporte diário', included: true },
-      { text: 'Sem lista de compras inteligente', included: false },
-      { text: 'Sem modo "O que tenho na geladeira?"', included: false },
+      { text: 'Orientação nutricional', included: true },
+      { text: 'Receitas de lanches', included: true },
+      { text: 'Estratégia de marmitas', included: false },
+      { text: 'Lista de compras inteligente', included: false },
+      { text: 'Geladeira inteligente', included: false },
     ],
   },
   {
@@ -97,16 +98,15 @@ const STATIC_PLANS: PlanDisplay[] = [
     priceNum: 79.9,
     durationFormatted: '30 dias',
     durationDays: 30,
-    messageLimitLabel: '25 mensagens por dia',
+    messageLimitLabel: '25 mensagens/dia',
     icon: '📆',
-    popular: true,
-    description: 'Plano mais popular com todos os recursos liberados.',
+    description: 'Plano completo com marmitas, receitas e geladeira inteligente.',
     features: [
-      { text: '30 dias de acesso', included: true },
-      { text: '25 mensagens por dia com a Yasa (reset diário)', included: true },
+      { text: 'Orientação nutricional', included: true },
+      { text: 'Receitas de lanches', included: true },
+      { text: 'Estratégia de marmitas + planos semanais', included: true },
       { text: 'Lista de compras inteligente', included: true },
-      { text: 'Modo "O que tenho na geladeira?"', included: true },
-      { text: 'Acompanhamento contínuo do plano alimentar', included: true },
+      { text: 'Geladeira inteligente', included: true },
     ],
   },
   {
@@ -116,16 +116,14 @@ const STATIC_PLANS: PlanDisplay[] = [
     priceNum: 199.9,
     durationFormatted: '90 dias',
     durationDays: 90,
-    messageLimitLabel: 'Ilimitado (máx 40/dia)',
+    messageLimitLabel: '40 mensagens/dia',
     icon: '📊',
-    description: 'Melhor custo-benefício para resultados consistentes.',
+    description: 'Tudo do mensal com acompanhamento premium e prioridade.',
     features: [
-      { text: '90 dias de acesso', included: true },
-      { text: 'Ilimitado (máx 40 mensagens/dia com reset diário)', included: true },
-      { text: 'Lista de compras inteligente', included: true },
-      { text: 'Modo "O que tenho na geladeira?"', included: true },
-      { text: 'Acompanhamento completo e prioridade', included: true },
-      { text: 'Melhor custo-benefício', included: true },
+      { text: 'Tudo do plano Mensal', included: true },
+      { text: 'Acompanhamento premium', included: true },
+      { text: 'Prioridade no WhatsApp', included: true },
+      { text: 'Relatórios semanais', included: true },
     ],
   },
 ]
@@ -219,6 +217,7 @@ export default function Auth() {
           email: patientEmail.trim() || undefined,
           nutritional_goal: nutritionalGoal,
           subscription_plan: 'free_trial',
+          plan_slug: 'free_trial',
         })
 
         if (!res.success) {
@@ -237,6 +236,7 @@ export default function Auth() {
             email: patientEmail.trim() || undefined,
             nutritional_goal: nutritionalGoal,
             subscription_plan: selectedPlan,
+            plan_slug: selectedPlan,
           })
         } catch (err) {
           console.warn('[Auth] warning saving pre-checkout patient:', err)
@@ -684,7 +684,7 @@ export default function Auth() {
                       ) : selectedPlan === 'free_trial' ? (
                         <>
                           <Sparkles className="mr-2 h-5 w-5" />
-                          Começar agora grátis (3 dias)
+                          Começar agora grátis (3 mensagens)
                           <ArrowRight className="ml-2 h-5 w-5" />
                         </>
                       ) : (

@@ -112,54 +112,57 @@ export interface Recipe {
   updated: string
 }
 
+export type SubscriptionPlanSlug = 'free_trial' | 'weekly' | 'monthly' | 'quarterly'
+export type PatientStatus = 'trial' | 'active' | 'expired' | 'cancelled' | 'inactive'
+
 export interface SubscriptionPlan {
   id: string
   name: string
-  slug: string
+  slug: SubscriptionPlanSlug
   description: string
   price_brl: number
   duration_days: number
   message_limit: number
-  /** "total" = limite acumulado (free_trial/weekly); "daily" = reseta a cada 24h (monthly/quarterly) */
-  limit_type: 'total' | 'daily'
-  /** true para Mensal e Trimestral (lista de compras + modo geladeira) */
+  limit_type: 'daily' | 'total'
   has_all_features: boolean
-  is_active: boolean
   benefits: string[]
+  infinitepay_link?: string
+  infinitepay_order_nsu?: string
+  is_active: boolean
   created: string
   updated: string
-  /** URL do checkout gerada pela InfinitePay (quando o link foi criado via API) */
-  infinitepay_link: string
-  /** order_nsu enviado para a InfinitePay ao criar o link */
-  infinitepay_order_nsu: string
 }
-
-export type PatientStatus = 'active' | 'inactive' | 'trial' | 'expired'
-export type SubscriptionPlanSlug = 'free_trial' | 'weekly' | 'monthly' | 'quarterly'
 
 export interface Patient {
   id: string
-  owner: string
   name: string
   phone: string
-  email: string
-  birth_date: string
-  nutritional_goal: string
-  registration_date: string
+  email?: string
+  notes?: string
+  birth_date?: string
+  nutritional_goal?: string
+  registration_date?: string
   status: PatientStatus
   subscription_plan: SubscriptionPlanSlug
-  subscription_start: string
-  subscription_end: string
+  subscription_status?: string
+  subscription_start?: string
+  subscription_end?: string
+  subscription_started_at?: string
+  subscription_expires_at?: string
   message_count_used: number
   message_count_limit: number
-  /** âncora do reset diário para planos com limit_type = "daily" */
-  message_reset_date: string
-  contact: string
-  invited_by: string
+  message_reset_date?: string
+  auto_messages_enabled?: boolean
+  total_messages?: number
+  last_interaction?: string
+  last_interaction_at?: string
+  avatar_url?: string
+  contact?: string
+  invited_by?: string
+  infinitepay_transaction_nsu?: string
+  owner: string
   created: string
   updated: string
-  /** último transaction_nsu recebido via webhook (anti-duplicação) */
-  infinitepay_transaction_nsu: string
 }
 
 export interface YasaFeedback {
@@ -224,6 +227,37 @@ export interface AppNotification {
   message: string
   read: boolean
   metadata?: Record<string, any>
+  created: string
+  updated: string
+}
+
+export interface Contact {
+  id: string
+  name: string
+  phone_number: string
+  whatsapp_id?: string
+  remote_jid?: string
+  push_name?: string
+  avatar_url?: string
+  patient_id?: string
+  owner: string
+  status: 'pending' | 'responded' | 'blocked'
+  pipeline_stage?: string
+  last_message?: string
+  last_message_at?: string
+  last_message_from_me?: boolean
+  created: string
+  updated: string
+}
+
+export interface Message {
+  id: string
+  contact: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: string
+  needs_human?: boolean
+  ai_response_seconds?: number
   created: string
   updated: string
 }
