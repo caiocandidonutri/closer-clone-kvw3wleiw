@@ -118,7 +118,7 @@ export const INFINITEPAY_FALLBACK_LINKS = INFINITEPAY_LINKS
 
 export async function createInfinitePayLinks(): Promise<{ success: boolean; message?: string }> {
   try {
-    const { pb } = await import('@/lib/pocketbase/client')
+    const pb = (await import('@/lib/pocketbase/client')).default
     const res = await pb.send<{ success: boolean; message?: string }>(
       '/backend/v1/infinitepay/create-links',
       {

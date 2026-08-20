@@ -9,38 +9,29 @@ export interface GetNotificationsResponse {
 
 export async function getNotifications(): Promise<GetNotificationsResponse> {
   try {
-    const data = await pb.send<GetNotificationsResponse>('/backend/v1/notifications', {
-      method: 'GET',
+    const records = await pb.collection('notifications').getList(1, 100, {
+      sort: '-created',
     })
-    return data
+    const items: AppNotification[] = records.items.map((r: any) => ({
+      id: r.id,
+      owner: r.owner,
+      patient_id: r.patient_id,
+      type: r.type || 'general',
+      title: r.title || '',
+      message: r.message || '',
+      read: !!r.read,
+      metadata: r.metadata,
+      created: r.created,
+      updated: r.updated,
+    }))
+    return {
+      items,
+      total: records.totalItems,
+      unread_count: items.filter((i) => !i.read).length,
+    }
   } catch (err) {
     console.error('[notificationsService] getNotifications error:', err)
-    // Fallback directly to SDK query if hook endpoint fails
-    try {
-      const records = await pb.collection('notifications').getList(1, 100, {
-        sort: '-created',
-      })
-      const items: AppNotification[] = records.items.map((r: any) => ({
-        id: r.id,
-        owner: r.owner,
-        patient_id: r.patient_id,
-        type: r.type || 'general',
-        title: r.title || '',
-        message: r.message || '',
-        read: !!r.read,
-        metadata: r.metadata,
-        created: r.created,
-        updated: r.updated,
-      }))
-      return {
-        items,
-        total: records.totalItems,
-        unread_count: items.filter((i) => !i.read).length,
-      }
-    } catch (sdkErr) {
-      console.error('[notificationsService] SDK fallback error:', sdkErr)
-      return { items: [], total: 0, unread_count: 0 }
-    }
+    return { items: [], total: 0, unread_count: 0 }
   }
 }
 

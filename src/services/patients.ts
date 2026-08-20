@@ -1,4 +1,4 @@
-import { pocketbase } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { FALLBACK_PLANS, SubscriptionPlan as IPPlan, INFINITEPAY_LINKS } from '@/lib/infinitepay'
 import { Patient, SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 
@@ -13,7 +13,7 @@ export interface PublicStats {
 
 export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   try {
-    const list = await pocketbase.collection('subscription_plans').getFullList({
+    const list = await pb.collection('subscription_plans').getFullList({
       sort: 'price_brl',
       filter: 'is_active = true',
       requestKey: null,
@@ -70,7 +70,7 @@ export async function getPublicStats(): Promise<PublicStats> {
 
 export async function listPatients(): Promise<Patient[]> {
   try {
-    const records = await pocketbase.collection('patients').getFullList<Patient>({
+    const records = await pb.collection('patients').getFullList<Patient>({
       sort: '-created',
     })
     return records
@@ -84,7 +84,7 @@ export const getPatients = listPatients
 
 export async function getPatient(id: string): Promise<Patient | null> {
   try {
-    const record = await pocketbase.collection('patients').getOne<Patient>(id)
+    const record = await pb.collection('patients').getOne<Patient>(id)
     return record
   } catch (err) {
     console.error('getPatient error:', err)
@@ -93,18 +93,18 @@ export async function getPatient(id: string): Promise<Patient | null> {
 }
 
 export async function createPatient(data: CreatePatientInput): Promise<Patient> {
-  const record = await pocketbase.collection('patients').create<Patient>(data)
+  const record = await pb.collection('patients').create<Patient>(data)
   return record
 }
 
 export async function updatePatient(id: string, data: Partial<Patient>): Promise<Patient> {
-  const record = await pocketbase.collection('patients').update<Patient>(id, data)
+  const record = await pb.collection('patients').update<Patient>(id, data)
   return record
 }
 
 export async function deletePatient(id: string): Promise<boolean> {
   try {
-    await pocketbase.collection('patients').delete(id)
+    await pb.collection('patients').delete(id)
     return true
   } catch (err) {
     console.error('deletePatient error:', err)
