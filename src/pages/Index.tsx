@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { useLanguage } from '@/hooks/use-language'
@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { usePlans } from '@/hooks/use-patients'
+import { getPublicStats, type PublicStats } from '@/services/patients'
 import { INFINITEPAY_FALLBACK_LINKS, resolveCheckoutUrl } from '@/lib/infinitepay'
 import type { SubscriptionPlanSlug } from '@/lib/types'
 
@@ -31,6 +32,28 @@ export default function Index() {
   const { t } = useLanguage()
   const { plans: dbPlans } = usePlans()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [stats, setStats] = useState<PublicStats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    getPublicStats()
+      .then((data) => {
+        if (mounted) {
+          setStats(data)
+          setLoadingStats(false)
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load public stats, using fallback:', err)
+        if (mounted) {
+          setLoadingStats(false)
+        }
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   if (!loading && user) {
     return <Navigate to="/app" replace />
@@ -330,10 +353,22 @@ export default function Index() {
             {/* Stats */}
             <div className="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-4">
               {[
-                { value: '700+', label: t('stat_patients') },
-                { value: '30+', label: t('stat_pros') },
-                { value: '20mil+', label: t('stat_messages') },
-                { value: '24/7', label: t('stat_support') },
+                {
+                  value: loadingStats ? '...' : stats !== null ? `${stats.patients_count}` : '8',
+                  label: t('stat_patients'),
+                },
+                {
+                  value: loadingStats ? '...' : stats !== null ? `${stats.active_contacts}` : '7',
+                  label: t('stat_active_contacts'),
+                },
+                {
+                  value: loadingStats ? '...' : stats !== null ? `${stats.messages_count}` : '35',
+                  label: t('stat_messages'),
+                },
+                {
+                  value: '24/7',
+                  label: t('stat_support'),
+                },
               ].map((s) => (
                 <div
                   key={s.label}

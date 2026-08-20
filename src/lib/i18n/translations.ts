@@ -20,8 +20,9 @@ export const translations = {
     hero_trust_cancel: 'Cancele quando quiser',
     stat_patients: 'Pacientes atendidos',
     stat_pros: 'Resultados em 30 dias',
+    stat_active_contacts: 'Contatos ativos',
     stat_messages: 'Mensagens trocadas',
-    stat_support: 'Disponível',
+    stat_support: 'IA 24 horas',
     problem_eyebrow: 'soa familiar?',
     problem_title: 'Emagrecer sozinho é difícil — mas não precisa ser assim',
     problem_intro:
@@ -519,8 +520,9 @@ export const translations = {
     hero_trust_cancel: 'Cancele quando quiser',
     stat_patients: 'Pacientes atendidos',
     stat_pros: 'Resultados em 30 dias',
+    stat_active_contacts: 'Contatos ativos',
     stat_messages: 'Mensagens trocadas',
-    stat_support: 'Disponível',
+    stat_support: 'IA 24 horas',
     problem_eyebrow: 'soa familiar?',
     problem_title: 'Emagrecer sozinho é difícil — mas não precisa ser assim',
     problem_intro:

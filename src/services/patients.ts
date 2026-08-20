@@ -134,6 +134,19 @@ export const deletePatient = async (id: string): Promise<void> => {
 }
 
 /** Resets a patient's message counter and re-arms the subscription dates (e.g. after upgrade). */
+export interface PublicStats {
+  patients_count: number
+  messages_count: number
+  active_contacts: number
+}
+
+/** Fetches real public statistics from the backend for the landing page */
+export const getPublicStats = async (): Promise<PublicStats> => {
+  return await pb.send<PublicStats>('/api/public/stats', {
+    method: 'GET',
+  })
+}
+
 export const renewPatient = async (id: string, plan: SubscriptionPlanSlug): Promise<Patient> => {
   const dates = buildSubscriptionDates(plan)
   const record = await pb.collection('patients').update(id, {
