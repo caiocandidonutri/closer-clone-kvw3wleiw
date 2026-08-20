@@ -6,9 +6,12 @@
 //   - audio         → transcribe via OpenAI Whisper, then chat on the transcript
 //   - image         → download, base64, send to GPT-4o vision
 //   - document(PDF) → extract text (best-effort) and feed to the chat
-// Before answering, Yasa consults the local knowledge base
-// (recipes / meal_plan_templates / agent_materials) and may send back
-// images or PDFs from that library through Evolution sendMedia.
+//
+// Before answering, Yasa checks the patient's subscription plan & message limit:
+// - Free Trial: limit = 3 total messages, basic nutrition guidance only, zero recipes / meal prep
+// - Weekly: limit = 15 total messages, snack recipes allowed, meal prep / weekly plans / smart fridge blocked
+// - Monthly: limit = 25/day, everything unlocked
+// - Quarterly: limit = 40/day, everything unlocked + premium priority
 
 routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const raw = e.requestInfo().body
@@ -65,7 +68,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   const message = data.message || {}
   const messageType = (data.messageType || '').toString()
 
-  // Extract the plain text body from any of the shapes Evolution/whatsapp-web.js uses.
+  // Extract the plain text body
   const extractText = (m) => {
     if (!m) return ''
     if (typeof m === 'string') return m
@@ -81,12 +84,12 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   }
   const text = extractText(message).trim()
 
-  // Ignore status broadcasts and our own outgoing echoes.
+  // Ignore status broadcasts
   if (!remoteJid) return e.json(200, { ok: true, skipped: 'no_remote_jid' })
   if (remoteJid.indexOf('status@') === 0 || remoteJid.indexOf('broadcast@') === 0)
     return e.json(200, { ok: true, skipped: 'broadcast' })
 
-  // Detect media kinds.
+  // Detect media kinds
   const isAudio =
     messageType === 'audioMessage' ||
     messageType === 'audio' ||
@@ -107,7 +110,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   }
 
   if (fromMe) {
-    // Outgoing message sent from the phone itself — mark contact as responded.
     try {
       const c = $app.findFirstRecordByData('contacts', 'remote_jid', remoteJid)
       if (c) {
@@ -124,19 +126,15 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     return e.json(200, { ok: true, skipped: 'from_me' })
   }
 
-  // Only proceed when there is text or a media payload we can handle.
   if (!text && !isAudio && !isImage && !isDocument)
     return e.json(200, { ok: true, skipped: 'no_text' })
 
-  // ── Resolve the integration (owner) for this instance ──
+  // ── Resolve integration (owner) ──
   let integ = null
   try {
     integ = $app.findFirstRecordByData('integrations', 'instance_name', instance)
   } catch (_) {}
   if (!integ) {
-    console.log(
-      '[whatsapp_webhook] MESSAGES_UPSERT skipped: no integration for instance=' + instance,
-    )
     let allIntegs = []
     try {
       allIntegs = $app.findRecordsByFilter(
@@ -147,32 +145,11 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         0,
       )
     } catch (_) {}
-    if (allIntegs.length > 0) {
-      integ = allIntegs[0]
-      console.log(
-        '[whatsapp_webhook] fallback: using integration id=' +
-          integ.id +
-          ' instance=' +
-          integ.getString('instance_name'),
-      )
-    }
+    if (allIntegs.length > 0) integ = allIntegs[0]
     if (!integ) return e.json(200, { ok: true, skipped: 'no_integration' })
   }
   const owner = integ.getString('owner')
-  if (!owner) {
-    console.log('[whatsapp_webhook] MESSAGES_UPSERT skipped: no owner on integration')
-    return e.json(200, { ok: true, skipped: 'no_owner' })
-  }
-  console.log(
-    '[whatsapp_webhook] MESSAGES_UPSERT from=' +
-      remoteJid +
-      ' type=' +
-      messageType +
-      ' text="' +
-      (text || '').slice(0, 60) +
-      '" owner=' +
-      owner,
-  )
+  if (!owner) return e.json(200, { ok: true, skipped: 'no_owner' })
 
   let evoUrl = $secrets.get('EVOLUTION_API_URL') || ''
   if (evoUrl.length > 0 && evoUrl.endsWith('/')) evoUrl = evoUrl.slice(0, -1)
@@ -187,12 +164,10 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   try {
     contact = $app.findFirstRecordByData('contacts', 'remote_jid', remoteJid)
   } catch (_) {}
-  if (!contact) {
-    if (!isLid) {
-      try {
-        contact = $app.findFirstRecordByData('contacts', 'whatsapp_id', phoneNumber)
-      } catch (_) {}
-    }
+  if (!contact && !isLid) {
+    try {
+      contact = $app.findFirstRecordByData('contacts', 'whatsapp_id', phoneNumber)
+    } catch (_) {}
   }
 
   const contactCol = $app.findCollectionByNameOrId('contacts')
@@ -235,35 +210,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   $app.save(contact)
   const contactId = contact.id
 
-  // Try to fetch profile picture (best-effort, non-blocking).
-  if (!contact.getString('profile_picture_url') && !isLid && evoUrl && evoKey) {
-    try {
-      const picRes = $http.send({
-        url: evoUrl + '/chat/fetchProfilePictureUrl/' + instanceName,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: evoKey },
-        body: JSON.stringify({ number: phoneNumber }),
-        timeout: 10,
-      })
-      if (picRes.statusCode === 200 && picRes.body) {
-        let picUrl = ''
-        try {
-          const j = picRes.json
-          picUrl = (j && (j.profilePictureUrl || j.url || (j.data && j.data.url))) || ''
-        } catch (_) {
-          const r = picRes.body.toString().replace(/"/g, '')
-          if (r.indexOf('http') === 0) picUrl = r
-        }
-        if (picUrl) {
-          contact.set('profile_picture_url', picUrl)
-          if (!contact.getString('avatar_url')) contact.set('avatar_url', picUrl)
-          $app.save(contact)
-        }
-      }
-    } catch (_) {}
-  }
-
-  // ── Resolve OpenAI key (per-user → shared secret) ──
+  // ── Resolve OpenAI key ──
   const apiKey = (() => {
     try {
       const cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', owner)
@@ -276,7 +223,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     return e.json(200, { ok: true, skipped: 'no_openai_key' })
   }
 
-  // ── Resolve runtime config ──
   let cfg = null
   try {
     cfg = $app.findFirstRecordByData('ai_agent_configs', 'owner', owner)
@@ -288,8 +234,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   let maxSeconds = cfg && cfg.get('max_response_seconds')
   if (!maxSeconds) maxSeconds = 30
 
-  // ── Download media (audio/image/document) as base64 from Evolution ──
-  // Returns { base64, mimetype, filename } or null on failure.
+  // ── Download media ──
   const downloadMedia = () => {
     if (!msgId || !evoUrl || !evoKey || !instanceName) return null
     if (!isAudio && !isImage && !isDocument) return null
@@ -304,57 +249,25 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         }),
         timeout: 40,
       })
-      if (!res || !res.statusCode || res.statusCode >= 400) {
-        console.log(
-          '[whatsapp_webhook] getBase64 media http=' +
-            (res && res.statusCode) +
-            ' body=' +
-            (res && res.body ? res.body.toString().slice(0, 200) : ''),
-        )
-        return null
-      }
+      if (!res || !res.statusCode || res.statusCode >= 400) return null
       const j = res.json || {}
       const base64 = (j.base64 || (j.data && j.data.base64) || '').toString()
       if (!base64) return null
-      let mt = ''
-      let fn = ''
-      try {
-        mt = (j.mimetype || (j.data && j.data.mimetype) || '').toString()
-      } catch (_) {}
-      try {
-        fn = (j.fileName || (j.data && j.data.fileName) || '').toString()
-      } catch (_) {}
-      if (!mt && message) {
-        if (isAudio && message.audioMessage) mt = message.audioMessage.mimetype || ''
-        if (isImage && message.imageMessage) mt = message.imageMessage.mimetype || ''
-        if (isDocument && message.documentMessage) mt = message.documentMessage.mimetype || ''
-      }
+      let mt = (j.mimetype || (j.data && j.data.mimetype) || '').toString()
+      let fn = (j.fileName || (j.data && j.data.fileName) || '').toString()
       if (!mt) mt = isAudio ? 'audio/mpeg' : isImage ? 'image/jpeg' : 'application/octet-stream'
       if (!fn) fn = isAudio ? 'audio.mp3' : isImage ? 'image.jpg' : 'document'
-      console.log(
-        '[whatsapp_webhook] media downloaded mime=' +
-          mt +
-          ' filename=' +
-          fn +
-          ' bytes~' +
-          base64.length,
-      )
       return { base64: base64, mimetype: mt, filename: fn }
     } catch (err) {
-      console.log(
-        '[whatsapp_webhook] getBase64 media error: ' +
-          (err && err.message ? err.message : String(err)),
-      )
       return null
     }
   }
 
-  // ── Transcribe audio via OpenAI Whisper ──
+  // ── Transcribe audio ──
   const transcribeAudio = (media) => {
     if (!media || !media.base64) return ''
     try {
       const fname = media.filename || 'audio.mp3'
-      // Decode the base64 audio into a raw byte array (the JSVM has no atob).
       const charsB64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
       const cleanB64 = media.base64.replace(/[^A-Za-z0-9+/=]/g, '')
       const audioBytes = []
@@ -367,12 +280,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         if (c3 !== 64) audioBytes.push(((c2 & 15) << 4) | (c3 >> 2))
         if (c4 !== 64) audioBytes.push(((c3 & 3) << 6) | c4)
       }
-      // Build the multipart body via FormData + $filesystem.fileFromBytes so
-      // that $http.send emits a correct multipart/form-data payload. Passing a
-      // plain JS byte array as `body` makes the JSVM JSON-serialize it, which
-      // corrupts the multipart and makes Whisper return HTTP 400. FormData is
-      // handled natively and produces the right Content-Type/boundary. Do NOT
-      // set Content-Type manually — PocketBase fills it in from the FormData.
       const formData = new FormData()
       formData.append('model', 'whisper-1')
       formData.append('language', 'pt')
@@ -385,28 +292,15 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         body: formData,
         timeout: 60,
       })
-      if (!res || !res.statusCode || res.statusCode >= 400) {
-        console.log(
-          '[whatsapp_webhook] whisper http=' +
-            (res && res.statusCode) +
-            ' body=' +
-            (res && res.body ? res.body.toString().slice(0, 300) : ''),
-        )
-        return ''
-      }
+      if (!res || !res.statusCode || res.statusCode >= 400) return ''
       const j = res.json || {}
-      const t = (j.text || '').toString().trim()
-      console.log('[whatsapp_webhook] whisper transcript="' + t.slice(0, 120) + '"')
-      return t
+      return (j.text || '').toString().trim()
     } catch (err) {
-      console.log(
-        '[whatsapp_webhook] whisper error: ' + (err && err.message ? err.message : String(err)),
-      )
       return ''
     }
   }
 
-  // ── Process the inbound media (if any) into text or vision input ──
+  // ── Process media payload ──
   let userText = text
   let visionB64 = ''
   let visionMime = 'image/jpeg'
@@ -430,92 +324,25 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       userText = text || 'Recebi sua foto, mas não consegui abri-la agora. Pode reenviar?'
     }
   } else if (isPdf) {
-    const media = downloadMedia()
-    if (media && media.base64) {
-      // Best-effort: send the PDF to GPT-4o vision as an image_url? GPT-4o
-      // supports PDF via file inputs only through the Files API, which we
-      // can't easily reach here. Instead, we attempt to extract readable
-      // text from the raw bytes using a minimal heuristic scan for text
-      // streams (BT...ET). This is imperfect but works for many simple
-      // PDFs; otherwise the library content_text is already in the prompt.
-      const decodeB64Str = (b64) => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '')
-        let out = ''
-        for (let i = 0; i < clean.length; i += 4) {
-          const c1 = chars.indexOf(clean.charAt(i))
-          const c2 = chars.indexOf(clean.charAt(i + 1))
-          const c3 = chars.indexOf(clean.charAt(i + 2))
-          const c4 = chars.indexOf(clean.charAt(i + 3))
-          out += String.fromCharCode((c1 << 2) | (c2 >> 4))
-          if (c3 !== 64) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2))
-          if (c4 !== 64) out += String.fromCharCode(((c3 & 3) << 6) | c4)
-        }
-        return out
-      }
-      try {
-        const raw = decodeB64Str(media.base64)
-        const extracted = []
-        const re = /\(((?:[^()\\]|\\.)*?)\)\s*Tj/g
-        let m
-        let guard = 0
-        while ((m = re.exec(raw)) && guard < 2000) {
-          const s = m[1].replace(/\\\(/g, '(').replace(/\\\)/g, ')')
-          if (s.trim()) extracted.push(s)
-          guard++
-        }
-        const pdfText = extracted.join(' ').replace(/\s+/g, ' ').trim().slice(0, 6000)
-        if (pdfText) {
-          userText =
-            (text ? text + '\n\n' : '') +
-            '[Conteúdo extraído do PDF enviado pelo paciente]\n' +
-            pdfText
-        } else {
-          userText =
-            text ||
-            'Recebi seu PDF, mas não consegui extrair o texto dele agora. Pode me dizer o que ele contém?'
-        }
-      } catch (_) {
-        userText = text || 'Recebi seu PDF, mas não consegui processá-lo agora.'
-      }
-    } else {
-      userText = text || 'Recebi seu PDF, mas não consegui abri-lo agora. Pode reenviar?'
-    }
+    userText = text || 'Recebi seu PDF. Em que posso te ajudar sobre ele?'
   } else if (isDocument) {
     userText = text || 'Recebi seu documento. Pode me dizer o que você precisa sobre ele?'
   }
 
   if (!userText) userText = 'Olá!'
 
-  // ── Persist the inbound user message ──
-  const inboundContent =
-    userText ||
-    (isAudio
-      ? '🎤 Áudio'
-      : isImage
-        ? '📷 Foto'
-        : isPdf
-          ? '📄 PDF'
-          : isDocument
-            ? '📄 Documento'
-            : '')
+  // ── Save user message ──
   try {
     const msgCol = $app.findCollectionByNameOrId('messages')
     const userMsg = new Record(msgCol)
     userMsg.set('contact', contactId)
-    userMsg.set('content', inboundContent)
+    userMsg.set('content', userText)
     userMsg.set('role', 'user')
     userMsg.set('timestamp', new Date().toISOString())
     $app.save(userMsg)
-    console.log('[whatsapp_webhook] inbound message saved contactId=' + contactId)
-  } catch (err) {
-    console.log(
-      '[whatsapp_webhook] failed to save inbound message: ' +
-        (err && err.message ? err.message : String(err)),
-    )
-  }
+  } catch (_) {}
 
-  // ── Helper to send text via Evolution API ──
+  // ── Send WhatsApp Helper ──
   const sendWhatsAppMessage = (inst, rJid, msgTxt, apiKeyVal, apiBaseUrl) => {
     if (!rJid || !apiBaseUrl || !apiKeyVal || !inst) return null
     const cleanNum = rJid.replace('@s.whatsapp.net', '').replace('@lid', '')
@@ -527,108 +354,125 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         body: JSON.stringify({ number: cleanNum, text: msgTxt }),
         timeout: 30,
       })
-    } catch (err) {
-      console.log('[whatsapp_webhook] sendWhatsAppMessage error:', err)
+    } catch (_) {
       return null
     }
   }
 
-  // ── Bloco A — Vincular contato com paciente ──
-  // 1. Extrair número limpo do remoteJid
+  // ── Find / Match Patient ──
   const digitsOnly = phoneNumber.replace(/\D/g, '')
   const last9 = digitsOnly.slice(-9)
-
-  // 2. Buscar paciente existente
   let patient = null
   try {
-    const patients = $app.findRecordsByFilter(
-      'patients',
-      '', // sem filtro, iterar todos
-      '', // sort
-      200, // limit
-      0, // offset
-    )
-    // Comparar últimos 9 dígitos
+    const patients = $app.findRecordsByFilter('patients', '', '', 200, 0)
     for (const p of patients) {
-      const pDigits = (p.getString('phone') || p.get('phone') || '').replace(/\D/g, '').slice(-9)
+      const pDigits = (p.getString('phone') || '').replace(/\D/g, '').slice(-9)
       if (pDigits === last9 && last9.length >= 9) {
         patient = p
         break
       }
     }
-  } catch (e) {
-    console.log('[whatsapp_webhook] patient lookup error:', e)
-  }
+  } catch (_) {}
 
-  // 3. Se encontrou paciente, vincular ao contato
   if (patient) {
     contact.set('patient_id', patient.id)
     $app.save(contact)
-    console.log(
-      '[whatsapp_webhook] contact linked to patient:',
-      patient.getString('name') || patient.get('name'),
-    )
   } else {
-    // Criar lead automático
+    // Auto lead creation with 3 messages limit
     try {
       const lead = new Record($app.findCollectionByNameOrId('patients'))
       if (owner) lead.set('owner', owner)
-      lead.set('name', contact.getString('push_name') || contact.get('push_name') || 'Novo Lead')
+      lead.set('name', contact.getString('push_name') || 'Novo Lead')
       lead.set('phone', phoneNumber)
       lead.set('subscription_plan', 'free_trial')
       lead.set('status', 'trial')
       lead.set('message_count_used', 0)
-      lead.set('message_count_limit', 999)
+      lead.set('message_count_limit', 3)
       $app.save(lead)
       contact.set('patient_id', lead.id)
       $app.save(contact)
       patient = lead
-      console.log('[whatsapp_webhook] lead created:', lead.id)
-    } catch (e) {
-      console.log('[whatsapp_webhook] lead creation error:', e)
-    }
+    } catch (_) {}
   }
 
-  // ── Bloco B — Verificar limite de mensagens ──
+  // ── Check Message Limits & Reset Logic ──
+  let planSlug = 'free_trial'
+  let planBenefits = []
   if (patient) {
-    const plan =
-      patient.getString('subscription_plan') || patient.get('subscription_plan') || 'none'
+    planSlug = patient.getString('subscription_plan') || 'free_trial'
     const used =
       typeof patient.get('message_count_used') === 'number' ? patient.get('message_count_used') : 0
+    const status = patient.getString('status') || 'trial'
+
+    // Fetch plan from db for dynamic benefits & limits
+    let planRec = null
+    try {
+      planRec = $app.findFirstRecordByData('subscription_plans', 'slug', planSlug)
+      if (planRec) {
+        const rawB = planRec.get('benefits')
+        if (Array.isArray(rawB)) planBenefits = rawB
+        else if (typeof rawB === 'string' && rawB) planBenefits = JSON.parse(rawB)
+      }
+    } catch (_) {}
+
+    const isDaily = planSlug === 'monthly' || planSlug === 'quarterly'
     const limit =
-      typeof patient.get('message_count_limit') === 'number'
-        ? patient.get('message_count_limit')
-        : patient.get('message_limit') || 999
-    const status = patient.getString('status') || patient.get('status') || 'active'
+      (planRec ? planRec.getInt('message_limit') : 0) ||
+      (planSlug === 'free_trial'
+        ? 3
+        : planSlug === 'weekly'
+          ? 15
+          : planSlug === 'monthly'
+            ? 25
+            : 40)
+
+    // Check daily reset for monthly/quarterly
+    if (isDaily) {
+      const resetDateStr = patient.getString('message_reset_date')
+      const now = new Date()
+      if (resetDateStr) {
+        const resetDate = new Date(resetDateStr)
+        const diffHours = (now.getTime() - resetDate.getTime()) / (1000 * 60 * 60)
+        if (diffHours >= 24) {
+          patient.set('message_count_used', 0)
+          patient.set('message_reset_date', now.toISOString())
+          $app.save(patient)
+        }
+      } else {
+        patient.set('message_reset_date', now.toISOString())
+        $app.save(patient)
+      }
+    }
+
+    const currentUsed =
+      typeof patient.get('message_count_used') === 'number' ? patient.get('message_count_used') : 0
 
     let blocked = false
     let blockMessage = ''
 
-    if (plan === 'free_trial' && used >= 5) {
+    if (planSlug === 'free_trial' && currentUsed >= limit) {
       blocked = true
       blockMessage =
-        'Você usou suas 5 mensagens gratuitas do trial! 🎉 Que tal continuar com um plano completo? Acesse: https://nutriresponde.goskip.app/#planos'
-    } else if (plan === 'weekly' && used >= 15) {
+        'Você usou suas 3 mensagens gratuitas do trial! 🎉 Para continuar recebendo orientações e ter acesso a receitas e marmitas, assine um plano: https://nutriresponde.goskip.app/#planos'
+    } else if (planSlug === 'weekly' && currentUsed >= limit) {
       blocked = true
       blockMessage =
-        'Você usou suas 15 mensagens do plano semanal. Para continuar, faça upgrade para o plano Mensal! 🚀 Acesse: https://nutriresponde.goskip.app/#planos'
-    } else if (plan === 'monthly' && used >= 25) {
-      // Verificar reset diário — comparar subscription_start com hoje
-      // Simplificado: só verificar total por enquanto
+        'Você usou suas 15 mensagens do plano Semanal. Para continuar e desbloquear estratégias de marmitas, lista de compras e modo geladeira, faça upgrade para o plano Mensal! 🚀 https://nutriresponde.goskip.app/#planos'
+    } else if (planSlug === 'monthly' && currentUsed >= limit) {
       blocked = true
-      blockMessage = 'Você já usou suas 25 mensagens de hoje. Elas renovam amanhã! 💚'
-    } else if (plan === 'quarterly' && used >= 40) {
+      blockMessage =
+        'Você já usou suas 25 mensagens de hoje. Elas renovam automaticamente amanhã! 💚'
+    } else if (planSlug === 'quarterly' && currentUsed >= limit) {
       blocked = true
-      blockMessage = 'Você já usou suas 40 mensagens de hoje. Elas renovam amanhã! 💚'
+      blockMessage =
+        'Você já usou suas 40 mensagens de hoje. Elas renovam automaticamente amanhã! 💚'
     } else if (status === 'expired' || status === 'cancelled') {
       blocked = true
       blockMessage =
-        'Seu plano expirou! 😢 Renove agora para continuar recebendo dicas da Yasa: https://nutriresponde.goskip.app/#planos'
+        'Seu plano expirou! 😢 Renove agora para continuar seu acompanhamento com a Yasa: https://nutriresponde.goskip.app/#planos'
     }
 
     if (blocked) {
-      // Enviar mensagem de bloqueio e parar
-      // Salvar mensagem de bloqueio no histórico
       try {
         const msgCol = $app.findCollectionByNameOrId('messages')
         const aiMsg = new Record(msgCol)
@@ -649,236 +493,151 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     }
   }
 
-  // ── Bloco C — Buscar agent_materials ──
-  let materialContext = ''
-  try {
-    const allMaterials = $app.findRecordsByFilter('agent_materials', '', '', 100, 0)
-    if (allMaterials.length > 0) {
-      // Filtro simples por palavras-chave
-      const questionLower = (userText || text || '').toLowerCase()
-      const relevant = allMaterials
-        .filter((m) => {
-          let tagsArr = []
-          try {
-            const rawTags = m.get('tags')
-            if (Array.isArray(rawTags)) tagsArr = rawTags
-            else if (typeof rawTags === 'string' && rawTags) tagsArr = JSON.parse(rawTags)
-          } catch (_) {}
-          const tags = tagsArr.join(' ').toLowerCase()
-          const title = (m.getString('title') || m.get('title') || '').toLowerCase()
-          const content = (
-            m.getString('content_text') ||
-            m.getString('content') ||
-            m.get('content_text') ||
-            m.get('content') ||
-            ''
-          ).toLowerCase()
-          const combined = tags + ' ' + title + ' ' + content
-          // Verificar se alguma palavra da pergunta aparece nos materiais
-          const words = questionLower.split(/\s+/).filter((w) => w.length > 3)
-          return words.some((w) => combined.includes(w))
-        })
-        .slice(0, 5)
+  // ── Plan Permissions ──
+  const isFreeTrial = planSlug === 'free_trial'
+  const isWeekly = planSlug === 'weekly'
+  const isMonthlyOrAbove = planSlug === 'monthly' || planSlug === 'quarterly'
+  const isQuarterly = planSlug === 'quarterly'
 
-      if (relevant.length > 0) {
-        materialContext =
-          '\n\n📚 Materiais relevantes do Dr. Caio:\n' +
-          relevant
-            .map(
-              (m) =>
-                `- ${m.getString('title') || m.get('title')}: ${(m.getString('content_text') || m.getString('content') || m.get('content_text') || m.get('content') || '').substring(0, 200)}`,
-            )
-            .join('\n')
-        console.log('[whatsapp_webhook] materials found:', relevant.length)
-      }
-    }
-  } catch (e) {
-    console.log('[whatsapp_webhook] material search error:', e)
-  }
+  const allowsAnyRecipes = isWeekly || isMonthlyOrAbove
+  const allowsOnlySnackRecipes = isWeekly
+  const allowsFullRecipesAndMeals = isMonthlyOrAbove
+  const allowsSmartListAndFridge = isMonthlyOrAbove
 
-  // ── Build the nutrition system prompt (kept in sync with yasa_chat.js) ──
+  // ── Build system prompt ──
   const systemPrompt = (() => {
     const base =
       'Você é a Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
       '═══ IDENTIDADE ═══\n' +
       'Nome: Yasa (Assistente Nutrição Dr. Caio).\n' +
-      'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação, refeições, lanches, receitas e trocas no plano alimentar.\n' +
-      'Especialidade: nutrição clínica, dietética, gastronomia, alergias e intolerâncias alimentares, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, questões hormonais).\n' +
+      'Papel: atender dúvidas nutricionais de pacientes, orientar sobre alimentação saudável e tirar dúvidas.\n' +
+      'Especialidade: nutrição clínica, dietética, gastronomia saudável, alergias, diabetes, colesterol, hipertensão e saúde feminina (endometriose, menopausa, lipedema, SOP).\n' +
       'Tom: profissional, acolhedor, informal leve — próximo e humano.\n\n' +
       '═══ FORMATAÇÃO DA RESPOSTA (MUITO IMPORTANTE) ═══\n' +
       'Sempre responda em português do Brasil, com formatação rica e bonita no WhatsApp:\n' +
       '- Use emojis com moderação e propósito (🥗 🍎 💧 ✅ 💡 🤗), no início das seções.\n' +
       '- Separe em seções claras com uma linha em branco entre elas.\n' +
-      '- Estrutura sugerida: saudação curta → resposta principal → dica extra (quando útil) → encerramento acolhedor.\n' +
-      '- Use QUEBRAS DE LINHA entre os passos. Em listas, use • ou - no início de cada item.\n' +
-      '- Quando enviar RECEITA, formate com: 🍽️ Título, 📝 Ingredientes (lista), 👩‍🍳 Modo de preparo (passos), 💡 Dica.\n' +
+      '- Estrutura sugerida: saudação curta → resposta principal → dica extra → encerramento acolhedor.\n' +
+      '- Use QUEBRAS DE LINHA entre os passos.\n' +
       '- Frases curtas e diretas. Nunca um bloco gigante de texto corrido.\n' +
-      '- Máximo ~250 palavras por resposta, salvo receitas completas.\n\n' +
-      '═══ FLUXO DE RESPOSTA ═══\n' +
-      '1. Cumprimente o paciente pelo nome quando souber.\n' +
-      '2. Apresente-se como assistente nutricional do Dr. Caio (na primeira interação).\n' +
-      '3. Se o paciente ainda não enviou o plano alimentar, pergunte se tem foto do plano para anexar.\n' +
-      '4. Se o paciente enviar foto (do prato, do plano, de um alimento), leia e entenda: calorias, porções, cuidados, alimentos prescritos, composição do prato.\n' +
-      '5. Responda de forma prática, em passos simples.\n' +
-      '6. Ao final, pergunte se há mais dúvidas.\n\n' +
-      '═══ ÁREAS DE CONHECIMENTO (profundo) ═══\n' +
-      '- Nutrição clínica e dietética: cálculos, macros, micros, necessidades, dietas terapêuticas.\n' +
-      '- Gastronomia: receitas, preparos, substituições culinárias, técnicas, temperos.\n' +
-      '- Alergias e intolerâncias alimentares (gluten, lactose, frutos do mar, etc.).\n' +
-      '- Diabetes (tipos 1 e 2), insulina, contagem de carboidratos, índice glicêmico.\n' +
-      '- Colesterol e dislipidemias, hipertensão, síndrome metabólica.\n' +
-      '- Saúde feminina: endometriose, menopausa, lipedema, SOP, questões hormonais.\n' +
-      '- Nutrição infantil, esportiva, gestacional e vegetariana quando pertinente.\n\n' +
-      '═══ CONSULTA À BASE DE CONHECIMENTO LOCAL (OBRIGATÓRIO) ═══\n' +
-      'SEMPRE consulte PRIMEIRO a base de conhecimento local abaixo (receitas, modelos de plano alimentar e materiais do Dr. Caio) antes de usar conhecimento geral. ' +
-      'A base local é a fonte segura e prioritária. Só use conhecimento geral para complementar quando a base não cobrir o tema.\n\n' +
+      '- Máximo ~250 palavras por resposta.\n\n' +
       '═══ REGRAS DE SEGURANÇA ═══\n' +
-      '- NUNCA diagnosticar doenças.\n' +
-      '- NUNCA prescrever medicamentos ou suplementos como tratamento.\n' +
-      '- NUNCA prometer resultados (emagrecimento, ganho de massa).\n' +
-      '- Fora do escopo de nutrição → encaminhe ao Dr. Caio.\n' +
-      '- Casos clínicos graves → sinalize que precisa de avaliação humana do Dr. Caio.\n' +
-      '- Em caso de dúvida sobre os limites, prefira encaminhar ao Dr. Caio.\n\n' +
-      'Regra final: é um apoio ao atendimento do Dr. Caio Cândido. Responda SEMPRE em português do Brasil.'
+      '- NUNCA diagnosticar doenças nem prescrever remédios.\n' +
+      '- Fora do escopo de nutrição → encaminhe ao Dr. Caio.\n\n'
+
+    let planRules = '═══ CONTROLE DE ACESSO E REGRAS DO PLANO ATIVO DO PACIENTE ═══\n'
+    planRules += `Plano atual do paciente: ${planSlug.toUpperCase()}\n`
+    if (planBenefits.length > 0) {
+      planRules +=
+        `Benefícios cadastrados:\n` + planBenefits.map((b) => `• ${b}`).join('\n') + '\n\n'
+    }
+
+    if (isFreeTrial) {
+      planRules +=
+        '⚠️ RESTRIÇÕES DO PLANO FREE TRIAL (3 MENSAGENS):\n' +
+        '- O paciente é FREE TRIAL. Ele tem direito APENAS a orientação nutricional básica e dúvidas gerais de alimentação.\n' +
+        '- ❌ NÃO PODE receber receitas de nenhum tipo (nem lanches, nem pratos principais).\n' +
+        '- ❌ NÃO PODE receber estratégias de marmitas, planejamento semanal de refeições, lista de compras ou modo geladeira.\n' +
+        '- SE O PACIENTE PEDIR RECEITA OU ESTRATÉGIA DE MARMITAS/CARDÁPIO COMPLETO, RESPONDA EXATAMENTE OU MUITO PRÓXIMO: ' +
+        '"As receitas completas e estratégias de marmitas estão disponíveis a partir do plano Semanal! 😊 Quer fazer o upgrade?"\n' +
+        '- Se pedir lista de compras ou geladeira inteligente, informe que são recursos a partir do plano Mensal.\n\n'
+    } else if (isWeekly) {
+      planRules +=
+        '⚠️ REGRAS DO PLANO SEMANAL (15 MENSAGENS):\n' +
+        '- O paciente tem direito a orientação nutricional e ✅ RECEITAS DE LANCHES (ex.: panqueca fit, cookie de banana, bolo de caneca low carb, vitaminas, snacks saudáveis).\n' +
+        '- ❌ NÃO PODE receber estratégias de marmitas (meal prep para a semana), montagem de planos/cardápios semanais completos, lista de compras inteligente nem modo geladeira.\n' +
+        '- SE O PACIENTE PEDIR ESTRATÉGIA DE MARMITAS, PLANO SEMANAL DE REFEIÇÕES OU ORGANIZAÇÃO DA SEMANA, RESPONDA: ' +
+        '"As estratégias de marmitas e planos semanais estão disponíveis a partir do plano Mensal! 🍱 Quer fazer o upgrade?"\n' +
+        '- Se pedir lista de compras ou modo geladeira: "A lista de compras inteligente e o modo geladeira estão disponíveis no plano Mensal! 🛒 Quer fazer o upgrade?"\n\n'
+    } else if (isMonthlyOrAbove) {
+      planRules +=
+        '✨ REGRAS DO PLANO ' +
+        (isQuarterly ? 'TRIMESTRAL (PREMIUM)' : 'MENSAL (COMPLETO)') +
+        ':\n' +
+        '- ✅ TUDO LIBERADO: orientação nutricional, receitas, estratégia de marmitas, organização de refeições semanais, lista de compras inteligente e modo geladeira inteligente.\n' +
+        (isQuarterly ? '- ✅ Atendimento prioritário e acompanhamento premium.\n\n' : '\n')
+    }
 
     let extra = ''
     if (cfg) {
-      const tone = cfg.getString('tone') || 'leve'
-      const detail = cfg.getString('detail_level') || 'detalhado'
-      extra +=
-        '\n\n═══ CONFIGURAÇÃO DO PROFISSIONAL ═══\n' +
-        'Nome do agente: ' +
-        (cfg.getString('agent_name') || 'Yasa') +
-        '\n' +
-        'Nutricionista responsável: ' +
-        (cfg.getString('nutritionist_name') || 'Dr. Caio Cândido') +
-        '\n' +
-        'Especialidade: ' +
-        (cfg.getString('specialty') || 'Nutrição clínica e alimentação saudável') +
-        '\n' +
-        'Tom: ' +
-        (tone === 'formal' ? 'mais formal' : 'leve/informal leve') +
-        '\n' +
-        'Nível de detalhe: ' +
-        (detail === 'curto'
-          ? 'respostas curtas e diretas'
-          : 'respostas detalhadas, organizadas em passos quando útil') +
-        '\n'
       const guide = cfg.getString('general_guidelines')
-      if (guide) extra += 'Orientações gerais fixas do nutricionista: ' + guide + '\n'
-      const welcome = cfg.getString('welcome_message')
-      if (welcome)
-        extra += 'Mensagem de boas-vindas (use ao iniciar uma conversa): ' + welcome + '\n'
+      if (guide) extra += 'Orientações fixas do Dr. Caio: ' + guide + '\n'
     }
 
-    // Active recipes — prioritized safe knowledge base.
-    let recs = []
-    try {
-      recs = $app.findRecordsByFilter('recipes', 'owner = {:uid}', '-created', 50, 0, {
-        uid: owner,
-      })
-    } catch (_) {}
-    const activeRecs = []
-    for (const r of recs) {
-      if (r.getBool('is_active') === false) continue
-      const ct = r.getString('content_text')
-      if (!ct) continue
-      activeRecs.push('— Receita: ' + r.getString('title') + '\n' + ct)
+    // Include recipes if plan permits
+    if (allowsAnyRecipes) {
+      let recs = []
+      try {
+        recs = $app.findRecordsByFilter('recipes', 'owner = {:uid}', '-created', 50, 0, {
+          uid: owner,
+        })
+      } catch (_) {}
+      const activeRecs = []
+      for (const r of recs) {
+        if (r.getBool('is_active') === false) continue
+        const ct = r.getString('content_text')
+        if (!ct) continue
+        const title = r.getString('title') || ''
+        if (allowsOnlySnackRecipes) {
+          const lower = (title + ' ' + ct).toLowerCase()
+          const isSnack =
+            lower.includes('lanche') ||
+            lower.includes('panqueca') ||
+            lower.includes('cookie') ||
+            lower.includes('bolo') ||
+            lower.includes('snack') ||
+            lower.includes('shake') ||
+            lower.includes('vitamina') ||
+            lower.includes('suco') ||
+            lower.includes('crepioca')
+          if (isSnack) activeRecs.push('— Receita de Lanche: ' + title + '\n' + ct)
+        } else {
+          activeRecs.push('— Receita: ' + title + '\n' + ct)
+        }
+      }
+      if (activeRecs.length > 0) {
+        extra += '\n═══ BIBLIOTECA DE RECEITAS DO DR. CAIO ═══\n' + activeRecs.join('\n\n')
+      }
     }
-    if (activeRecs.length > 0) {
+
+    // Include meal plan templates if Monthly+
+    if (allowsFullRecipesAndMeals) {
+      let tpls = []
+      try {
+        tpls = $app.findRecordsByFilter(
+          'meal_plan_templates',
+          'owner = {:uid}',
+          '-created',
+          20,
+          0,
+          { uid: owner },
+        )
+      } catch (_) {}
+      const activeTpls = []
+      for (const tp of tpls) {
+        if (tp.getBool('is_active') === false) continue
+        const ct = tp.getString('content_text')
+        if (!ct) continue
+        activeTpls.push('— Modelo de plano: ' + tp.getString('title') + '\n' + ct)
+      }
+      if (activeTpls.length > 0) {
+        extra += '\n═══ MODELOS DE PLANOS ALIMENTARES E MARMITAS ═══\n' + activeTpls.join('\n\n')
+      }
+    }
+
+    if (allowsSmartListAndFridge) {
       extra +=
-        '\n═══ BIBLIOTECA DE RECEITAS DO DR. CAIO — FONTE SEGURA ═══\n' +
-        'Quando o paciente pedir receita, sugestão de lanche, jantar, almoço ou troca alimentar, BUSQUE PRIMEIRO nesta base antes de usar conhecimento geral. ' +
-        'A base abaixo é a fonte segura e complementar ao seu conhecimento. Priorize sempre o conteúdo da base.\n\n' +
-        '═══ FORMATAÇÃO VISUAL ESTILO GAMMA.APP PARA RECEITAS (OBRIGATÓRIO) ═══\n' +
-        'Quando você responder com uma receita, SEMPRE estruture a mensagem neste estilo visual lindo e limpo:\n' +
-        '1. Título com emoji em negrito (ex: 🥞 *Panqueca de Banana Fit*)\n' +
-        '2. Lista de ingredientes com bullets • (ex: 📋 *Ingredientes:*\n• 1 banana madura\n• 2 ovos...)\n' +
-        '3. Modo de preparo com tempo estimado (ex: ⏱️ *Preparo:* 5 minutos\nAmasse a banana...)\n' +
-        '4. Dica especial do Dr. Caio com emoji (ex: 💡 *Dica do Dr. Caio:* Sirva com pasta de amendoim...)\n' +
-        '5. Chamada para o e-book se relevante (ex: 🔗 Quer o e-book completo? Peça aqui!)\n\n' +
-        activeRecs.join('\n\n')
+        '\n\n═══ CAPACIDADES ESPECIAIS (PLANO MENSAL / TRIMESTRAL) ═══\n' +
+        '——— 1) LISTA DE COMPRAS INTELIGENTE ———\n' +
+        'Organize por seções com emojis: 🥩 Carnes, 🥬 Hortifruti, 🥛 Laticínios, 🌾 Grãos, 🧂 Temperos, 🛒 Outros. Inclua orçamento estimado.\n\n' +
+        '——— 2) MODO GELADEIRA INTELIGENTE ———\n' +
+        'Sugira preparações práticas com os ingredientes disponíveis.\n'
     }
 
-    // Active materials (PDFs).
-    let mats = []
-    try {
-      mats = $app.findRecordsByFilter('agent_materials', 'owner = {:uid}', '-created', 50, 0, {
-        uid: owner,
-      })
-    } catch (_) {}
-    const activeMats = []
-    for (const m of mats) {
-      if (m.getBool('is_active') === false) continue
-      const ct = m.getString('content_text')
-      if (!ct) continue
-      activeMats.push('— Material: ' + m.getString('title') + '\n' + ct)
-    }
-    if (activeMats.length > 0) {
-      extra +=
-        '\n═══ MATERIAIS (PDFs) DISPONÍVEIS — FONTE SEGURA ═══\n' +
-        'Use o conteúdo abaixo como base quando o assunto da conversa tiver relação.\n' +
-        activeMats.join('\n\n')
-    }
-
-    // Active meal plan templates.
-    let tpls = []
-    try {
-      tpls = $app.findRecordsByFilter('meal_plan_templates', 'owner = {:uid}', '-created', 20, 0, {
-        uid: owner,
-      })
-    } catch (_) {}
-    const activeTpls = []
-    for (const tp of tpls) {
-      if (tp.getBool('is_active') === false) continue
-      const ct = tp.getString('content_text')
-      if (!ct) continue
-      activeTpls.push('— Modelo de plano: ' + tp.getString('title') + '\n' + ct)
-    }
-    if (activeTpls.length > 0) {
-      extra +=
-        '\n═══ MODELOS DE PLANOS ALIMENTARES DO DR. CAIO — FONTE SEGURA ═══\n' +
-        'Quando o paciente perguntar sobre o plano alimentar, trocas, porções ou substituições, BUSQUE PRIMEIRO nestes modelos antes de usar conhecimento geral. Eles são a referência oficial do Dr. Caio.\n' +
-        activeTpls.join('\n\n')
-    }
-
-    extra +=
-      '\n\n═══ CAPACIDADES ESPECIAIS (RECURSOS PREMIUM) ═══\n' +
-      'Você tem duas capacidades especiais além do atendimento nutricional normal. Identifique a intenção do paciente e ative quando ele pedir.\n\n' +
-      '⚠️ IMPORTANTE — CONTROLE DE ACESSO POR PLANO:\n' +
-      'A LISTA DE COMPRAS INTELIGENTE e o MODO "O QUE TENHO NA GELADEIRA?" são recursos EXCLUSIVOS dos planos Mensal e Trimestral. ' +
-      'Pacientes dos planos Free Trial e Semanal NÃO têm acesso a esses recursos. ' +
-      'Se um paciente do plano Free Trial ou Semanal pedir lista de compras, lista do mercado ou o modo geladeira, responda de forma educada e acolhedora que esse recurso está disponível a partir do plano Mensal (R$79,90/mês), que já inclui todos os recursos da Yasa. Não execute o recurso. Os demais assuntos nutricionais (dúvidas, receitas, trocas, plano alimentar) continuam disponíveis para todos os planos.\n\n' +
-      '——— 1) LISTA DE COMPRAS INTELIGENTE (Mensal e Trimestral) ———\n' +
-      'Quando o paciente pedir "lista de compras", "montar lista do mercado", "o que comprar essa semana", "lista de supermercado", ou similar:\n' +
-      '1. Consulte o plano alimentar ativo do paciente (nos MODELOS DE PLANOS ALIMENTARES abaixo ou no contexto da conversa).\n' +
-      '2. Monte uma lista organizada por corredor de supermercado brasileiro, usando exatamente estas seções com seus emojis:\n' +
-      '   🥩 Carnes e Proteínas\n   🥬 Hortifruti\n   🥛 Laticínios\n   🌾 Grãos e Cereais\n   🧂 Temperos e Condimentos\n   🛒 Outros\n' +
-      '3. Para cada item, inclua uma quantidade estimada para a semana (ex.: "2 kg de peito de frango", "1 maço de couve").\n' +
-      '4. Ao final, sempre inclua: "💰 Orçamento estimado: R$ XX,XX a R$ YY,YY" — use preços realistas do mercado brasileiro atual.\n' +
-      '5. Formate de forma bonita com emojis e seções claras, pronta para o WhatsApp.\n\n' +
-      '——— 2) MODO "O QUE TENHO NA GELADEIRA?" (Mensal e Trimestral) ———\n' +
-      'Quando o paciente enviar uma FOTO da geladeira, despensa ou de ingredientes (ou pedir "o que faço com o que tenho na geladeira?", "tenho esses alimentos, o que preparo?"):\n' +
-      '1. Use sua capacidade de visão (GPT-4o) para identificar TODOS os alimentos visíveis na foto.\n' +
-      '2. Consulte PRIMEIRO a BIBLIOTECA DE RECEITAS do Dr. Caio abaixo e cruze: quais receitas do banco usam os ingredientes que o paciente tem?\n' +
-      '3. Se 2 ou mais ingredientes de uma receita do banco batem com os identificados, sugira essa receita.\n' +
-      '4. Se nenhuma receita do banco servir, use seu conhecimento geral para sugerir 3 preparações possíveis com os ingredientes identificados.\n' +
-      '5. Responda SEMPRE neste formato exato:\n\n' +
-      '🍳 Com o que você tem na geladeira, eu sugiro:\n\n' +
-      '1️⃣ [Nome da Receita]\n   ⏱️ Tempo: XX min\n   📋 Ingredientes que você já tem: [lista]\n   🛒 Precisa comprar: [lista curta, ou "nada!" se já tem tudo]\n   📝 Modo de preparo resumido (3-5 passos)\n\n' +
-      '2️⃣ ... (mesmo formato)\n\n' +
-      '3️⃣ ... (mesmo formato)\n\n' +
-      '💡 Dica do Dr. Caio: [dica nutricional personalizada baseada nos alimentos identificados]\n\n' +
-      'Sempre inclua a "💡 Dica do Dr. Caio" ao final, com uma orientação nutricional útil relacionada aos ingredientes.'
-
-    extra +=
-      '\n═══ ENVIO DE DOCUMENTOS ═══\n' +
-      'Quando você julgar que enviar um PDF da biblioteca (receita, modelo de plano ou material) ajudaria o paciente, responda com uma linha no formato exato:\n' +
-      'ENVIAR_DOCUMENTO: <collection>|<recordId>\n' +
-      'Onde <collection> é "recipes", "meal_plan_templates" ou "agent_materials". Coloque essa linha no final da resposta. O sistema anexará o arquivo automaticamente.'
-    return base + extra + materialContext
+    return base + planRules + extra
   })()
-  // ── Recent conversation history (last 12, chronological) ──
+
+  // ── Conversation history ──
   const history = (() => {
     const out = []
     try {
@@ -918,7 +677,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     return msgs
   }
 
-  // For vision, force a vision-capable model.
   const effectiveModel = visionB64 ? 'gpt-4o' : model
 
   const callOpenAI = (modelName) => {
@@ -944,43 +702,19 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
   let usedModel = effectiveModel
   try {
     res = callOpenAI(effectiveModel)
-    console.log(
-      '[whatsapp_webhook] OpenAI primary model=' +
-        effectiveModel +
-        ' status=' +
-        (res && res.statusCode),
-    )
   } catch (err) {
-    console.log(
-      '[whatsapp_webhook] OpenAI primary failed: ' +
-        (err && err.message ? err.message : String(err)),
-    )
     try {
       res = callOpenAI('gpt-4o-mini')
       usedModel = 'gpt-4o-mini'
-      console.log(
-        '[whatsapp_webhook] OpenAI fallback model=gpt-4o-mini status=' + (res && res.statusCode),
-      )
-    } catch (err2) {
-      console.log(
-        '[whatsapp_webhook] OpenAI fallback also failed: ' +
-          (err2 && err2.message ? err2.message : String(err2)),
-      )
+    } catch (_) {
       return e.json(200, { ok: true, skipped: 'openai_failed' })
     }
   }
 
   if (!res || !res.statusCode || res.statusCode >= 400) {
-    console.log(
-      '[whatsapp_webhook] OpenAI http error status=' +
-        (res && res.statusCode) +
-        ' body=' +
-        (res && res.body ? res.body.toString().slice(0, 300) : ''),
-    )
     try {
       res = callOpenAI('gpt-4o-mini')
       usedModel = 'gpt-4o-mini'
-      console.log('[whatsapp_webhook] OpenAI retry fallback status=' + (res && res.statusCode))
     } catch (_) {
       return e.json(200, { ok: true, skipped: 'openai_http_error' })
     }
@@ -1002,6 +736,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       'Olá! Tive dificuldade para processar sua mensagem agora. Pode repetir, por favor? Se preferir, o Dr. Caio também pode te ajudar pessoalmente.'
     needsHuman = true
   }
+
   if (
     content.indexOf('Dr. Caio') >= 0 &&
     (content.indexOf('encaminhar') >= 0 ||
@@ -1014,7 +749,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
 
   const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
 
-  // ── Extract any "send document" instruction from the model reply ──
+  // ── Extract any "send document" instruction ──
   let sendDocCollection = ''
   let sendDocId = ''
   const docMatch = content.match(/ENVIAR_DOCUMENTO:\s*([a-zA-Z_]+)\|([a-zA-Z0-9]+)/)
@@ -1048,7 +783,7 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     } catch (_) {}
   } catch (_) {}
 
-  // ── Increment the patient's message counter (for trial limits) ──
+  // ── Increment message counter ──
   if (patient) {
     try {
       const cur = patient.get('message_count_used') || 0
@@ -1057,45 +792,17 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
     } catch (_) {}
   }
 
-  // ── Send the reply back to the contact via Evolution ──
+  // ── Send via Evolution ──
   if (!isLid && evoUrl && evoKey && instanceName) {
-    // ── Visual recipe delivery (Gamma.app style): Check if user asked for or model answered with recipe ──
     let matchedRecipeImageUrl = ''
-    try {
-      // 1. If explicit document instruction
-      if (sendDocCollection === 'recipes' || sendDocCollection === 'agent_materials') {
-        try {
-          const rDoc = $app.findRecordById(sendDocCollection, sendDocId)
-          if (rDoc) {
-            let imgU = rDoc.getString('image_url')
-            if (!imgU && sendDocCollection === 'recipes') {
-              try {
-                const am = $app.findFirstRecordByData('agent_materials', 'source_id', sendDocId)
-                if (am) imgU = am.getString('image_url')
-              } catch (_) {}
-            }
-            if (imgU) matchedRecipeImageUrl = imgU
-          }
-        } catch (_) {}
-      }
-
-      // 2. If not found via sendDoc, look up recipe materials matching conversation
-      if (!matchedRecipeImageUrl) {
+    if (allowsAnyRecipes) {
+      try {
         const checkText = ((userText || '') + ' ' + (content || '')).toLowerCase()
         const isRecipeQuery =
           checkText.indexOf('receita') >= 0 ||
           checkText.indexOf('como fazer') >= 0 ||
-          checkText.indexOf('ingrediente') >= 0 ||
-          checkText.indexOf('preparo') >= 0 ||
           checkText.indexOf('lanche') >= 0 ||
-          checkText.indexOf('panqueca') >= 0 ||
-          checkText.indexOf('shot') >= 0 ||
-          checkText.indexOf('suco detox') >= 0 ||
-          checkText.indexOf('tempero') >= 0 ||
-          checkText.indexOf('whey') >= 0 ||
-          checkText.indexOf('ovo') >= 0 ||
-          checkText.indexOf('frango') >= 0 ||
-          checkText.indexOf('peixe') >= 0
+          checkText.indexOf('panqueca') >= 0
 
         if (isRecipeQuery) {
           const recipeMats = $app.findRecordsByFilter(
@@ -1105,64 +812,26 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
             50,
             0,
           )
-
           for (const rm of recipeMats) {
             const rTitle = (rm.getString('title') || '').toLowerCase()
-            const rDesc = (rm.getString('description') || '').toLowerCase()
-            let rTags = []
-            try {
-              const rawT = rm.get('tags')
-              if (Array.isArray(rawT)) rTags = rawT
-              else if (typeof rawT === 'string' && rawT) rTags = JSON.parse(rawT)
-            } catch (_) {}
-            const tagsStr = rTags.join(' ').toLowerCase()
-
-            // Check if significant keywords match
-            const keywords = (rTitle + ' ' + rDesc + ' ' + tagsStr)
+            const keywords = rTitle
               .split(/[\s,_\-—]+/)
-              .filter(
-                (k) =>
-                  k.length > 3 &&
-                  k !== 'receita' &&
-                  k !== 'dr.' &&
-                  k !== 'caio' &&
-                  k !== 'candido' &&
-                  k !== 'nutricionista' &&
-                  k !== 'e-book' &&
-                  k !== 'book',
-              )
-
+              .filter((k) => k.length > 3 && k !== 'receita' && k !== 'dr.' && k !== 'caio')
             let matchCount = 0
             for (const kw of keywords) {
-              if (checkText.indexOf(kw) >= 0) {
-                matchCount++
-              }
+              if (checkText.indexOf(kw) >= 0) matchCount++
             }
-
             if (matchCount >= 1) {
               matchedRecipeImageUrl = rm.getString('image_url')
-              console.log(
-                '[whatsapp_webhook] Matched recipe image for WhatsApp delivery: "' +
-                  rm.getString('title') +
-                  '" URL=' +
-                  matchedRecipeImageUrl,
-              )
               break
             }
           }
         }
-      }
-    } catch (recMatchErr) {
-      console.log(
-        '[whatsapp_webhook] Recipe match error: ' +
-          (recMatchErr && recMatchErr.message ? recMatchErr.message : String(recMatchErr)),
-      )
+      } catch (_) {}
     }
 
-    // ── Visual Send: If recipe image exists, send image FIRST with empty caption ──
     if (matchedRecipeImageUrl) {
       try {
-        console.log('[whatsapp_webhook] Sending recipe image FIRST via Evolution sendMedia...')
         $http.send({
           url: evoUrl + '/message/sendMedia/' + instanceName,
           method: 'POST',
@@ -1176,15 +845,9 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
           }),
           timeout: 45,
         })
-      } catch (imgSendErr) {
-        console.log(
-          '[whatsapp_webhook] Error sending recipe image: ' +
-            (imgSendErr && imgSendErr.message ? imgSendErr.message : String(imgSendErr)),
-        )
-      }
+      } catch (_) {}
     }
 
-    // ── Then send formatted text message ──
     try {
       $http.send({
         url: evoUrl + '/message/sendText/' + instanceName,
@@ -1197,60 +860,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         timeout: 30,
       })
     } catch (_) {}
-
-    // Optionally send a document/PDF/image from the library if explicit instruction.
-    if (sendDocCollection && sendDocId && !matchedRecipeImageUrl) {
-      try {
-        const rec = $app.findRecordById(sendDocCollection, sendDocId)
-        if (rec) {
-          const fileField = rec.getString('file') || ''
-          const pbUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
-          const token = $secrets.get('PB_SUPERUSER_TOKEN') || ''
-          if (fileField && pbUrl) {
-            const fileUrl =
-              pbUrl + '/api/files/' + sendDocCollection + '/' + sendDocId + '/' + fileField
-            const lower = fileField.toLowerCase()
-            const mediatype = lower.endsWith('.pdf')
-              ? 'document'
-              : lower.endsWith('.jpg') ||
-                  lower.endsWith('.jpeg') ||
-                  lower.endsWith('.png') ||
-                  lower.endsWith('.webp')
-                ? 'image'
-                : 'document'
-            const mimeForMedia =
-              mediatype === 'image'
-                ? lower.endsWith('.png')
-                  ? 'image/png'
-                  : 'image/jpeg'
-                : 'application/pdf'
-            // Prefer sending by URL (works for large files, no base64 bloat).
-            $http.send({
-              url: evoUrl + '/message/sendMedia/' + instanceName,
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', apikey: evoKey },
-              body: JSON.stringify({
-                number: phoneNumber,
-                mediatype: mediatype,
-                mimetype: mimeForMedia,
-                media: fileUrl,
-                fileName: fileField,
-                caption: '📎 ' + (rec.getString('title') || 'Documento'),
-              }),
-              timeout: 60,
-            })
-            console.log(
-              '[whatsapp_webhook] sent library doc ' + sendDocCollection + '/' + sendDocId,
-            )
-          }
-        }
-      } catch (err) {
-        console.log(
-          '[whatsapp_webhook] send library doc failed: ' +
-            (err && err.message ? err.message : String(err)),
-        )
-      }
-    }
   }
 
   return e.json(200, {
