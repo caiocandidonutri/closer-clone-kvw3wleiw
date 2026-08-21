@@ -732,13 +732,6 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
       $app.save(contact)
     } catch (_) {}
 
-    // Increment message count used
-    try {
-      const cur = patient.get('message_count_used') || 0
-      patient.set('message_count_used', cur + 1)
-      $app.save(patient)
-    } catch (_) {}
-
     // Send to WhatsApp via Evolution
     if (!isLid && evoUrl && evoKey && instanceName) {
       sendWhatsAppMessage(instanceName, remoteJid, triageReply, evoKey, evoUrl)

@@ -129,6 +129,34 @@ export async function renewPatient(id: string, planSlug: string): Promise<Patien
 }
 
 export async function releasePatientMessages(id: string, bonusAmount = 5): Promise<Patient> {
+  try {
+    const res = await pb.send<{
+      success: boolean
+      whatsapp_sent: boolean
+      patient_id: string
+      bonus_amount: number
+      patient?: Patient
+    }>('/backend/v1/patients/release-messages', {
+      method: 'POST',
+      body: {
+        patient_id: id,
+        bonus_amount: bonusAmount,
+      },
+    })
+
+    if (res && res.patient) {
+      // Reload full record to preserve all relations and typed fields
+      const updated = await getPatient(id)
+      return updated || (res.patient as Patient)
+    }
+
+    const updated = await getPatient(id)
+    if (updated) return updated
+  } catch (err) {
+    console.warn('[releasePatientMessages] endpoint failed, falling back to direct update:', err)
+  }
+
+  // Fallback if backend route is unavailable
   const current = await getPatient(id)
   const currentLimit = current?.message_count_limit || 0
   const currentBonus = (current as any)?.message_count_bonus || 0

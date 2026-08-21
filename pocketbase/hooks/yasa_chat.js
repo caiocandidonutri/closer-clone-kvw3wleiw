@@ -339,13 +339,6 @@ routerAdd(
         } catch (_) {}
       }
 
-      // Increment message count used
-      try {
-        const cur = patientRecord.get('message_count_used') || 0
-        patientRecord.set('message_count_used', cur + 1)
-        $app.save(patientRecord)
-      } catch (_) {}
-
       return e.json(200, {
         content: triageReply,
         message_id: savedMessageId,
