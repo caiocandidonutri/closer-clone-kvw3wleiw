@@ -62,9 +62,13 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     fetchIntegrations()
   }, [fetchIntegrations])
 
-  useRealtime('integrations', () => {
-    fetchIntegrations()
-  })
+  useRealtime(
+    'integrations',
+    () => {
+      fetchIntegrations()
+    },
+    !!user,
+  )
 
   const addIntegration = async (name?: string) => {
     if (!user) return null
