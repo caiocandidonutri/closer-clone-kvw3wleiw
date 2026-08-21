@@ -161,6 +161,14 @@ export interface Patient {
   contact?: string
   invited_by?: string
   infinitepay_transaction_nsu?: string
+  // Triage fields
+  weight_kg?: number | null
+  height_cm?: number | null
+  intolerances?: string[] | null
+  health_conditions?: string[] | null
+  dietary_preference?: string | null
+  triaged?: boolean
+  triaged_at?: string | null
   owner: string
   created: string
   updated: string

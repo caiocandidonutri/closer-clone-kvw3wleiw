@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T13:16:51.927Z",
+  "generatedAt": "2026-08-21T00:55:43.610Z",
   "collections": [
     {
       "name": "users",
@@ -1026,6 +1026,48 @@
         {
           "name": "infinitepay_transaction_nsu",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "weight_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "height_cm",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "intolerances",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "health_conditions",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dietary_preference",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "triaged",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "triaged_at",
+          "type": "date",
           "required": false,
           "system": false
         }

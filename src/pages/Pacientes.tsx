@@ -252,6 +252,21 @@ function PatientRow({
         <Badge variant="outline" className="text-[11px] px-2 py-0.5 hidden sm:inline-flex">
           {PLAN_LABELS[patient.subscription_plan] || patient.subscription_plan}
         </Badge>
+        {patient.triaged ? (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 bg-green-50 text-green-700 border-green-200 hidden lg:inline-flex"
+          >
+            Triado
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200 hidden lg:inline-flex"
+          >
+            Sem Triagem
+          </Badge>
+        )}
         {hasLimit && (
           <span className="text-[11px] text-muted-foreground font-semibold hidden md:inline">
             {used}/{limit} {isDaily ? 'msgs/dia' : 'msgs'}

@@ -2,7 +2,11 @@
 // Yasa chat endpoint — OpenAI Chat Completions API (text + vision via gpt-4o),
 // DALL-E 3 image generation, and library document delivery.
 //
-// Respects plan tiers and limits dynamically by inspecting patient subscription_plan & benefits.
+// Features:
+// 1. Mandatory triage workflow for non-triaged patients before GPT invocation
+// 2. Individual patient protection (anti-sharing rule)
+// 3. Complete personalized system prompt when triaged (IMC, weight, height, goal, intolerances, conditions, diet)
+// 4. Plan limits and resets
 
 routerAdd(
   'POST',
@@ -92,6 +96,267 @@ routerAdd(
       }
     } catch (_) {}
 
+    // ── Helper parsing routines for triage ──
+    const parseWeight = (raw) => {
+      if (!raw) return null
+      const cleaned = raw.replace(',', '.').replace(/[^\d.]/g, '')
+      const num = parseFloat(cleaned)
+      if (isNaN(num)) return null
+      if (num >= 30 && num <= 300) return num
+      return null
+    }
+
+    const parseHeight = (raw) => {
+      if (!raw) return null
+      let str = raw.trim().replace(',', '.')
+      let num = parseFloat(str.replace(/[^\d.]/g, ''))
+      if (isNaN(num)) return null
+      if (num >= 100 && num <= 250) {
+        return Math.round(num)
+      }
+      if (num >= 1.0 && num <= 2.5) {
+        return Math.round(num * 100)
+      }
+      return null
+    }
+
+    const parseObjective = (raw) => {
+      if (!raw) return ''
+      const trimmed = raw.trim()
+      const lower = trimmed.toLowerCase()
+      if (
+        lower === '1' ||
+        lower.includes('emagrecimento') ||
+        lower.includes('emagrecer') ||
+        lower.includes('perder peso')
+      ) {
+        return 'Emagrecimento'
+      }
+      if (
+        lower === '2' ||
+        lower.includes('hipertrofia') ||
+        lower.includes('massa muscular') ||
+        lower.includes('ganhar massa')
+      ) {
+        return 'Hipertrofia'
+      }
+      if (
+        lower === '3' ||
+        lower.includes('saúde feminina') ||
+        lower.includes('saude feminina') ||
+        lower.includes('hormonal') ||
+        lower.includes('endometriose') ||
+        lower.includes('menopausa') ||
+        lower.includes('lipedema') ||
+        lower.includes('sop')
+      ) {
+        return 'Saúde feminina'
+      }
+      if (
+        lower === '4' ||
+        lower.includes('diabetes') ||
+        lower.includes('glicemia') ||
+        lower.includes('insulina')
+      ) {
+        return 'Diabetes'
+      }
+      if (lower.startsWith('5') || lower === '5') {
+        const rest = trimmed.replace(/^[5️⃣5\s:.-]+/i, '').trim()
+        return rest || 'Outro objetivo de saúde'
+      }
+      return trimmed
+    }
+
+    const parseListItems = (raw) => {
+      if (!raw) return []
+      const trimmed = raw.trim()
+      const lower = trimmed.toLowerCase()
+      if (
+        lower === 'nenhuma' ||
+        lower === 'nenhum' ||
+        lower === 'não' ||
+        lower === 'nao' ||
+        lower === 'nada' ||
+        lower === 'não tenho' ||
+        lower === 'nao tenho' ||
+        lower === 'sem' ||
+        lower === 'n' ||
+        lower === '0'
+      ) {
+        return []
+      }
+      const split = trimmed
+        .split(/[,;\n\/|]|\be\b|\bou\b/i)
+        .map((s) =>
+          s
+            .trim()
+            .replace(/^[•\-\*\s]+/, '')
+            .trim(),
+        )
+        .filter((s) => s.length > 1 && !/^(e|ou|nao|não|nenhuma|nenhum|nada)$/i.test(s))
+      return split
+    }
+
+    // ── FRENTE 2: MANDATORY TRIAGE WORKFLOW (In yasa_chat) ──
+    const isPatientTriaged = patientRecord ? patientRecord.getBool('triaged') === true : false
+
+    if (patientRecord && !isPatientTriaged) {
+      const curWeight = patientRecord.get('weight_kg')
+      const curHeight = patientRecord.get('height_cm')
+      const curGoal = patientRecord.getString('nutritional_goal')
+      const curIntol = patientRecord.get('intolerances')
+      const curCond = patientRecord.get('health_conditions')
+
+      const hasWeight =
+        curWeight !== null && curWeight !== '' && typeof curWeight === 'number' && curWeight >= 30
+      const hasHeight =
+        curHeight !== null && curHeight !== '' && typeof curHeight === 'number' && curHeight >= 100
+      const hasGoal = !!(curGoal && curGoal.trim().length > 0)
+      const hasIntol =
+        curIntol !== null &&
+        curIntol !== undefined &&
+        (Array.isArray(curIntol) ||
+          curIntol === '[]' ||
+          (typeof curIntol === 'string' && curIntol.length > 0))
+      const hasCond =
+        curCond !== null &&
+        curCond !== undefined &&
+        (Array.isArray(curCond) ||
+          curCond === '[]' ||
+          (typeof curCond === 'string' && curCond.length > 0))
+
+      const isFirstContact = !hasWeight && !hasHeight && !hasGoal && !hasIntol && !hasCond
+
+      let triageReply = ''
+      let triageCompleted = false
+      let currentStep = 'weight'
+
+      if (isFirstContact) {
+        currentStep = 'weight'
+      } else if (!hasWeight) {
+        currentStep = 'weight'
+      } else if (!hasHeight) {
+        currentStep = 'height'
+      } else if (!hasGoal) {
+        currentStep = 'goal'
+      } else if (!hasIntol) {
+        currentStep = 'intolerances'
+      } else if (!hasCond) {
+        currentStep = 'conditions'
+      }
+
+      const patientName = patientRecord.getString('name') || 'paciente'
+
+      if (currentStep === 'weight') {
+        if (isFirstContact) {
+          triageReply =
+            `Olá, ${patientName}! 💚 Sou a Yasa, sua assistente nutricional oficial do Dr. Caio Cândido.\n\n` +
+            `Para que todas as minhas recomendações sejam 100% personalizadas sob medida para você, vamos fazer uma triagem rápida de 5 perguntinhas!\n\n` +
+            `1️⃣ Qual o seu *peso atual*? (ex: 72 kg)`
+        } else {
+          const val = parseWeight(message)
+          if (val) {
+            patientRecord.set('weight_kg', val)
+            $app.save(patientRecord)
+            triageReply = `Perfeito, ${val} kg anotado! ✍️\n\n2️⃣ E qual a sua *altura*? (ex: 1,65 m ou 165 cm)`
+          } else {
+            triageReply = `Por favor, informe um peso válido entre 30 e 300 kg (ex: 72 kg ou 68.5) para continuarmos nossa triagem! ⚖️`
+          }
+        }
+      } else if (currentStep === 'height') {
+        const val = parseHeight(message)
+        if (val) {
+          patientRecord.set('height_cm', val)
+          $app.save(patientRecord)
+          const heightM = (val / 100).toFixed(2).replace('.', ',')
+          triageReply =
+            `Ótimo, altura ${heightM} m registrada! 📏\n\n` +
+            `3️⃣ Qual é o seu *principal objetivo*?\n` +
+            `1️⃣ Emagrecimento\n` +
+            `2️⃣ Hipertrofia (ganho de massa muscular)\n` +
+            `3️⃣ Saúde feminina (menopausa, SOP, lipedema, etc.)\n` +
+            `4️⃣ Diabetes / Controle de glicemia\n` +
+            `5️⃣ Outro (pode me contar em detalhes!)`
+        } else {
+          triageReply = `Por favor, informe uma altura válida entre 1,00 m e 2,50 m (ex: 1,65 m ou 165) para continuarmos! 📏`
+        }
+      } else if (currentStep === 'goal') {
+        const obj = parseObjective(message)
+        if (obj) {
+          patientRecord.set('nutritional_goal', obj)
+          $app.save(patientRecord)
+          triageReply =
+            `Excelente foco em *${obj}*! 🎯\n\n` +
+            `4️⃣ Você tem alguma *intolerância ou alergia alimentar*?\n` +
+            `(Ex: lactose, glúten, ovo, amendoim, frutos do mar... Se não tiver nenhuma, responda apenas *nenhuma*).`
+        } else {
+          triageReply = `Por favor, escolha uma das opções (1 a 5) ou digite seu objetivo nutricional para continuarmos! 🎯`
+        }
+      } else if (currentStep === 'intolerances') {
+        const list = parseListItems(message)
+        patientRecord.set('intolerances', list)
+        $app.save(patientRecord)
+        const formatted = list.length > 0 ? list.join(', ') : 'nenhuma'
+        triageReply =
+          `Anotado (intolerâncias: ${formatted})! 📋\n\n` +
+          `5️⃣ Por último: você tem alguma *condição de saúde* que eu deva saber?\n` +
+          `(Ex: diabetes, hipertensão, hipotireoidismo, gastrite, colesterol alto, SOP... Se não tiver, responda apenas *nenhuma*).`
+      } else if (currentStep === 'conditions') {
+        const list = parseListItems(message)
+        patientRecord.set('health_conditions', list)
+        patientRecord.set('triaged', true)
+        patientRecord.set('triaged_at', new Date().toISOString())
+        $app.save(patientRecord)
+        triageCompleted = true
+
+        triageReply =
+          `Perfeito! 🎉 Triagem concluída com sucesso.\n\n` +
+          `Agora cada recomendação, cálculo e orientação será feita sob medida pra você, ${patientName} 💚\n\n` +
+          `O que você gostaria de saber ou como posso te ajudar hoje?`
+      }
+
+      // Persist assistant reply
+      let savedMessageId = ''
+      if (contactId) {
+        try {
+          const msgCol = $app.findCollectionByNameOrId('messages')
+          const aiMsg = new Record(msgCol)
+          aiMsg.set('contact', contactId)
+          aiMsg.set('content', triageReply)
+          aiMsg.set('role', 'assistant')
+          aiMsg.set('timestamp', new Date().toISOString())
+          aiMsg.set('needs_human', false)
+          aiMsg.set('ai_response_seconds', 0)
+          $app.save(aiMsg)
+          savedMessageId = aiMsg.id
+
+          try {
+            const contact = $app.findRecordById('contacts', contactId)
+            contact.set('last_message', triageReply)
+            contact.set('status', 'responded')
+            $app.save(contact)
+          } catch (_) {}
+        } catch (_) {}
+      }
+
+      // Increment message count used
+      try {
+        const cur = patientRecord.get('message_count_used') || 0
+        patientRecord.set('message_count_used', cur + 1)
+        $app.save(patientRecord)
+      } catch (_) {}
+
+      return e.json(200, {
+        content: triageReply,
+        message_id: savedMessageId,
+        needs_human: false,
+        model: 'triage-deterministic',
+        patient_plan: patientPlanSlug,
+        triage: true,
+        triage_completed: triageCompleted,
+      })
+    }
+
     // Derive permissions from plan slug & benefits
     const isFreeTrial = patientPlanSlug === 'free_trial'
     const isWeekly = patientPlanSlug === 'weekly'
@@ -106,6 +371,8 @@ routerAdd(
 
     // ── Build the full system prompt ──
     const systemPrompt = (() => {
+      const patientName = (patientRecord && patientRecord.getString('name')) || 'paciente'
+
       const base =
         'Você é a Yasa, a assistente nutricional oficial do Dr. Caio Cândido.\n\n' +
         '═══ IDENTIDADE ═══\n' +
@@ -151,6 +418,74 @@ routerAdd(
         '- Fora do escopo de nutrição → encaminhe ao Dr. Caio.\n' +
         '- Casos clínicos graves → sinalize que precisa de avaliação humana do Dr. Caio.\n' +
         '- Em caso de dúvida sobre os limites, prefira encaminhar ao Dr. Caio.\n\n'
+
+      // ── FRENTE 4: PROTEÇÃO ANTI-COMPARTILHAMENTO ──
+      const antiSharingSection =
+        '🚨 PROTEÇÃO DE ATENDIMENTO INDIVIDUAL:\n' +
+        `Este paciente (${patientName}) é o ÚNICO que você atende neste número de WhatsApp.\n` +
+        'Se o paciente perguntar algo PARA OUTRA PESSOA (ex: "meu marido quer saber...", "minha filha pode comer...", "meu amigo...", "minha esposa..."), você DEVE:\n' +
+        `1. Educar gentilmente: "Entendo, ${patientName}! Mas meu atendimento é 100% personalizado para você. Se seu familiar/amigo quiser acompanhamento, pode criar o plano em https://nutriresponde.goskip.app/#planos."\n` +
+        '2. Redirecionar para o próprio plano do paciente: "Vamos focar em você! 💚"\n' +
+        '3. JAMAIS responder a pergunta sobre a outra pessoa.\n\n'
+
+      // ── FRENTE 3: PERFIL DO PACIENTE (Se triaged === true) ──
+      let patientProfileSection = ''
+      if (patientRecord && patientRecord.getBool('triaged') === true) {
+        const weight = patientRecord.get('weight_kg') || null
+        const height = patientRecord.get('height_cm') || null
+        const goal = patientRecord.getString('nutritional_goal') || 'Saúde geral'
+        const dietary = patientRecord.getString('dietary_preference') || 'Onívoro'
+
+        let rawIntol = patientRecord.get('intolerances')
+        let intolerancesArr = []
+        if (Array.isArray(rawIntol)) intolerancesArr = rawIntol
+        else if (typeof rawIntol === 'string' && rawIntol) {
+          try {
+            intolerancesArr = JSON.parse(rawIntol)
+          } catch (_) {
+            intolerancesArr = [rawIntol]
+          }
+        }
+
+        let rawCond = patientRecord.get('health_conditions')
+        let conditionsArr = []
+        if (Array.isArray(rawCond)) conditionsArr = rawCond
+        else if (typeof rawCond === 'string' && rawCond) {
+          try {
+            conditionsArr = JSON.parse(rawCond)
+          } catch (_) {
+            conditionsArr = [rawCond]
+          }
+        }
+
+        let imcStr = 'Não calculado'
+        if (weight && height && height > 0) {
+          const heightM = height / 100
+          const imcVal = (weight / (heightM * heightM)).toFixed(1)
+          imcStr = `${imcVal}`
+        }
+
+        const intolStr =
+          intolerancesArr.length > 0 ? intolerancesArr.join(', ') : 'Nenhuma relatada'
+        const condStr = conditionsArr.length > 0 ? conditionsArr.join(', ') : 'Nenhuma relatada'
+
+        patientProfileSection =
+          '═══ PERFIL DO PACIENTE (PERSONALIZAÇÃO OBRIGATÓRIA) ═══\n' +
+          `- Nome: ${patientName}\n` +
+          `- Peso: ${weight ? weight + ' kg' : 'Não informado'}\n` +
+          `- Altura: ${height ? height + ' cm' : 'Não informada'}${height && weight ? ' → IMC: ' + imcStr : ''}\n` +
+          `- Objetivo: ${goal}\n` +
+          `- Intolerâncias / Alergias: ${intolStr}\n` +
+          `- Condições de saúde: ${condStr}\n` +
+          `- Preferência alimentar: ${dietary}\n\n` +
+          '⚠️ REGRAS DE PERSONALIZAÇÃO:\n' +
+          '- JAMAIS recomende alimentos que contenham as intolerâncias do paciente.\n' +
+          '- Adapte toda receita ou orientação às intolerâncias listadas.\n' +
+          '- Considere o objetivo (emagrecimento = foco em déficit calórico e saciedade, hipertrofia = superávit proteico e densidade nutricional).\n' +
+          '- Se o paciente tem diabetes ou glicemia alta: evite carboidratos simples, priorize baixo índice glicêmico e fibras.\n' +
+          '- Se o paciente tem hipertensão: atenção redobrada ao sódio e alimentos ultraprocessados.\n' +
+          '- Se o paciente tem problemas tireoidianos / saúde feminina: priorize micronutrientes anti-inflamatórios e antioxidantes.\n\n'
+      }
 
       // ── PIRÂMIDE DE CONTEÚDO E REGRAS POR PLANO ATIVO ──
       let planRulesSection = '═══ CONTROLE DE ACESSO E REGRAS DO PLANO ATIVO DO PACIENTE ═══\n'
@@ -332,7 +667,7 @@ routerAdd(
           'Sugira preparações com os alimentos identificados.\n'
       }
 
-      return base + planRulesSection + extra
+      return base + antiSharingSection + patientProfileSection + planRulesSection + extra
     })()
 
     // ── Recent conversation history (last 12 messages) ──
@@ -574,6 +909,15 @@ routerAdd(
       } catch (err) {
         $app.logger().warn('yasa persist message failed', 'err', err.message || String(err))
       }
+    }
+
+    // Increment message count used
+    if (patientRecord) {
+      try {
+        const cur = patientRecord.get('message_count_used') || 0
+        patientRecord.set('message_count_used', cur + 1)
+        $app.save(patientRecord)
+      } catch (_) {}
     }
 
     const resp = {

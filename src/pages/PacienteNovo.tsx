@@ -6,7 +6,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, ArrowLeft, UserPlus, Check } from 'lucide-react'
+import {
+  Loader2,
+  ArrowLeft,
+  UserPlus,
+  Check,
+  ClipboardCheck,
+  Scale,
+  Ruler,
+  Apple,
+  HeartPulse,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import type { SubscriptionPlanSlug } from '@/lib/types'
 
@@ -24,6 +34,12 @@ interface FormState {
   birth_date: string
   nutritional_goal: string
   subscription_plan: SubscriptionPlanSlug
+  weight_kg: string
+  height_cm: string
+  intolerances: string
+  health_conditions: string
+  dietary_preference: string
+  triaged: boolean
 }
 
 const EMPTY: FormState = {
@@ -33,6 +49,12 @@ const EMPTY: FormState = {
   birth_date: '',
   nutritional_goal: '',
   subscription_plan: 'free_trial',
+  weight_kg: '',
+  height_cm: '',
+  intolerances: '',
+  health_conditions: '',
+  dietary_preference: 'onívoro',
+  triaged: false,
 }
 
 export default function PacienteNovo() {
@@ -50,6 +72,15 @@ export default function PacienteNovo() {
     }
     setSaving(true)
     try {
+      const parsedIntol = form.intolerances
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      const parsedCond = form.health_conditions
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+
       await create({
         name: form.name.trim(),
         phone: form.phone.trim(),
@@ -57,6 +88,13 @@ export default function PacienteNovo() {
         birth_date: form.birth_date || undefined,
         nutritional_goal: form.nutritional_goal.trim() || undefined,
         subscription_plan: form.subscription_plan,
+        weight_kg: form.weight_kg ? Number(form.weight_kg) : null,
+        height_cm: form.height_cm ? Number(form.height_cm) : null,
+        intolerances: parsedIntol,
+        health_conditions: parsedCond,
+        dietary_preference: form.dietary_preference.trim() || undefined,
+        triaged: form.triaged,
+        triaged_at: form.triaged ? new Date().toISOString() : null,
       })
       navigate('/app/pacientes')
     } catch (_) {
@@ -188,6 +226,88 @@ export default function PacienteNovo() {
                 className="rounded-xl min-h-[80px] resize-none"
                 placeholder="Ex.: Emagrecimento, ganho de massa, controle de diabetes..."
               />
+            </div>
+
+            {/* Optional Pre-triage info */}
+            <div className="pt-4 border-t border-border/40 space-y-4">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-primary" />
+                <div>
+                  <h3 className="font-bold text-base text-foreground">
+                    Dados Iniciais de Triagem (Opcional)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Se não preencher agora, a Yasa fará a triagem automaticamente via WhatsApp na
+                    primeira interação.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <Scale className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label htmlFor="p_weight">Peso atual (kg)</Label>
+                  </div>
+                  <Input
+                    id="p_weight"
+                    type="number"
+                    step="0.1"
+                    min="30"
+                    max="300"
+                    value={form.weight_kg}
+                    onChange={(e) => setForm({ ...form, weight_kg: e.target.value })}
+                    className="rounded-xl h-11"
+                    placeholder="Ex.: 72.5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label htmlFor="p_height">Altura (cm)</Label>
+                  </div>
+                  <Input
+                    id="p_height"
+                    type="number"
+                    min="100"
+                    max="250"
+                    value={form.height_cm}
+                    onChange={(e) => setForm({ ...form, height_cm: e.target.value })}
+                    className="rounded-xl h-11"
+                    placeholder="Ex.: 165"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Apple className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Label htmlFor="p_intolerances">
+                    Intolerâncias ou Alergias (separadas por vírgula)
+                  </Label>
+                </div>
+                <Input
+                  id="p_intolerances"
+                  value={form.intolerances}
+                  onChange={(e) => setForm({ ...form, intolerances: e.target.value })}
+                  className="rounded-xl h-11"
+                  placeholder="Ex.: lactose, glúten, ovo"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <HeartPulse className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Label htmlFor="p_conditions">Condições de saúde (separadas por vírgula)</Label>
+                </div>
+                <Input
+                  id="p_conditions"
+                  value={form.health_conditions}
+                  onChange={(e) => setForm({ ...form, health_conditions: e.target.value })}
+                  className="rounded-xl h-11"
+                  placeholder="Ex.: diabetes, hipotireoidismo, SOP"
+                />
+              </div>
             </div>
 
             {/* WhatsApp invite preview */}
