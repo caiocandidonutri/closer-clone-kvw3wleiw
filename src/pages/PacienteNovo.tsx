@@ -132,7 +132,7 @@ export default function PacienteNovo() {
       </div>
 
       <Card className="border-border/40 shadow-subtle rounded-[2rem] overflow-hidden">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <CardHeader className="pb-4 border-b border-border/40 bg-muted/20">
             <CardTitle className="text-xl tracking-tight">Dados do paciente</CardTitle>
             <CardDescription>Preencha as informações abaixo.</CardDescription>
@@ -144,11 +144,19 @@ export default function PacienteNovo() {
               </Label>
               <Input
                 id="p_name"
+                type="text"
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="rounded-xl h-12"
                 placeholder="Ex.: Maria Silva"
+                onInvalid={(e) => {
+                  const input = e.target as HTMLInputElement
+                  if (!input.value) {
+                    input.setCustomValidity('Este campo é obrigatório.')
+                  }
+                }}
+                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
               />
             </div>
 
@@ -159,11 +167,25 @@ export default function PacienteNovo() {
                 </Label>
                 <Input
                   id="p_phone"
+                  type="text"
+                  inputMode="tel"
                   required
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   className="rounded-xl h-12"
                   placeholder="(11) 99999-9999"
+                  pattern="\d{8,15}"
+                  onInvalid={(e) => {
+                    const input = e.target as HTMLInputElement
+                    if (!input.value) {
+                      input.setCustomValidity('Este campo é obrigatório.')
+                    } else {
+                      input.setCustomValidity(
+                        'Por favor, insira um número de WhatsApp com DDD (ex: 11987654321).',
+                      )
+                    }
+                  }}
+                  onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                 />
               </div>
               <div className="space-y-2">
@@ -172,11 +194,22 @@ export default function PacienteNovo() {
                 </Label>
                 <Input
                   id="p_email"
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="rounded-xl h-12"
                   placeholder="maria@email.com"
+                  pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
+                  onInvalid={(e) => {
+                    const input = e.target as HTMLInputElement
+                    if (input.value) {
+                      input.setCustomValidity(
+                        'Por favor, insira um e-mail válido (ex: nome@email.com).',
+                      )
+                    }
+                  }}
+                  onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                 />
               </div>
             </div>

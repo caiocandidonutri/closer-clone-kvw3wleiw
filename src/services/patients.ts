@@ -49,9 +49,10 @@ export const getPublicSubscriptionPlans = getSubscriptionPlans
 
 export async function getPublicStats(): Promise<PublicStats> {
   try {
-    const res = await fetch('/backend/v1/public/stats')
-    if (res.ok) {
-      const data = await res.json()
+    const data = await pb.send<any>('/backend/v1/public/stats', {
+      method: 'GET',
+    })
+    if (data) {
       return {
         total_patients: data.total_patients || 0,
         active_subscribers: data.active_subscribers || data.active_patients || 0,
@@ -204,17 +205,39 @@ export async function registerPublicPatient(data: {
       plan_slug: data.plan_slug || data.subscription_plan || 'free_trial',
       subscription_plan: data.subscription_plan || data.plan_slug || 'free_trial',
     }
-    const res = await fetch('/backend/v1/public/register-patient', {
+    const res = await pb.send<{
+      success: boolean
+      patient?: any
+      error?: string
+      message_sent?: boolean
+    }>('/backend/v1/patients/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: payload,
     })
-    const json = await res.json()
-    if (!res.ok) {
-      return { success: false, error: json.error || 'Falha no cadastro' }
+    if (!res || res.success === false) {
+      return { success: false, error: res?.error || 'Falha no cadastro' }
     }
-    return json
+    return {
+      success: true,
+      patient_id: res.patient?.id,
+    }
   } catch (err: any) {
-    return { success: false, error: err.message || 'Erro de conexão' }
+    console.warn('[registerPublicPatient] endpoint failed, falling back to direct creation:', err)
+    try {
+      const created = await pb.collection('patients').create({
+        name: data.name,
+        phone: data.phone,
+        email: data.email || undefined,
+        nutritional_goal: data.nutritional_goal || undefined,
+        subscription_plan: data.subscription_plan || data.plan_slug || 'free_trial',
+        status: (data.subscription_plan || data.plan_slug) === 'free_trial' ? 'trial' : 'active',
+      })
+      return {
+        success: true,
+        patient_id: created.id,
+      }
+    } catch (createErr: any) {
+      return { success: false, error: createErr.message || 'Erro de conexão' }
+    }
   }
 }

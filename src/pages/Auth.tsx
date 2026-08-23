@@ -338,19 +338,32 @@ export default function Auth() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleNutriSubmit} className="space-y-4">
+              <form onSubmit={handleNutriSubmit} noValidate className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">{t('email_label')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="email"
-                      type="email"
+                      type="text"
+                      inputMode="email"
                       placeholder="caiocandidonutri@hotmail.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="pl-10 rounded-xl"
                       required
+                      pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
+                      onInvalid={(e) => {
+                        const input = e.target as HTMLInputElement
+                        if (!input.value) {
+                          input.setCustomValidity('Este campo é obrigatório.')
+                        } else {
+                          input.setCustomValidity(
+                            'Por favor, insira um e-mail válido (ex: nome@email.com).',
+                          )
+                        }
+                      }}
+                      onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                     />
                   </div>
                 </div>
@@ -366,6 +379,13 @@ export default function Auth() {
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 rounded-xl"
                       required
+                      onInvalid={(e) => {
+                        const input = e.target as HTMLInputElement
+                        if (!input.value) {
+                          input.setCustomValidity('Este campo é obrigatório.')
+                        }
+                      }}
+                      onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                     />
                   </div>
                 </div>
@@ -465,7 +485,7 @@ export default function Auth() {
                   </p>
                 </div>
 
-                <form onSubmit={handlePatientSubmit} className="space-y-8">
+                <form onSubmit={handlePatientSubmit} noValidate className="space-y-8">
                   {/* Etapa 1: Dados do Paciente */}
                   <Card className="border border-border/40 shadow-subtle rounded-[2rem] overflow-hidden">
                     <CardHeader className="bg-muted/20 pb-4 border-b border-border/40">
@@ -497,6 +517,13 @@ export default function Auth() {
                               value={patientName}
                               onChange={(e) => setPatientName(e.target.value)}
                               className="pl-10 h-12 rounded-xl"
+                              onInvalid={(e) => {
+                                const input = e.target as HTMLInputElement
+                                if (!input.value) {
+                                  input.setCustomValidity('Este campo é obrigatório.')
+                                }
+                              }}
+                              onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                             />
                           </div>
                         </div>
@@ -509,12 +536,25 @@ export default function Auth() {
                             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               id="pt_phone"
-                              type="tel"
+                              type="text"
+                              inputMode="tel"
                               required
                               placeholder="(11) 98765-4321"
                               value={patientPhone}
                               onChange={(e) => setPatientPhone(e.target.value)}
                               className="pl-10 h-12 rounded-xl"
+                              pattern="\d{8,15}"
+                              onInvalid={(e) => {
+                                const input = e.target as HTMLInputElement
+                                if (!input.value) {
+                                  input.setCustomValidity('Este campo é obrigatório.')
+                                } else {
+                                  input.setCustomValidity(
+                                    'Por favor, insira um número de WhatsApp com DDD (ex: 11987654321).',
+                                  )
+                                }
+                              }}
+                              onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                             />
                           </div>
                           <span className="text-[11px] text-muted-foreground">
@@ -532,11 +572,22 @@ export default function Auth() {
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               id="pt_email"
-                              type="email"
+                              type="text"
+                              inputMode="email"
                               placeholder="carol@exemplo.com"
                               value={patientEmail}
                               onChange={(e) => setPatientEmail(e.target.value)}
                               className="pl-10 h-12 rounded-xl"
+                              pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
+                              onInvalid={(e) => {
+                                const input = e.target as HTMLInputElement
+                                if (input.value) {
+                                  input.setCustomValidity(
+                                    'Por favor, insira um e-mail válido (ex: nome@email.com).',
+                                  )
+                                }
+                              }}
+                              onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                             />
                           </div>
                         </div>
