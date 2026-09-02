@@ -20,8 +20,11 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/hooks/use-auth'
 
 export function NotificationBell() {
+  const { isAuthenticated, user } = useAuth()
+  const isAuth = Boolean(isAuthenticated && user && pb.authStore.isValid)
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -29,10 +32,8 @@ export function NotificationBell() {
   const navigate = useNavigate()
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const isAuth = pb.authStore.isValid
-
   const loadNotifications = useCallback(async () => {
-    if (!pb.authStore.isValid) {
+    if (!pb.authStore.isValid || !isAuthenticated) {
       setNotifications([])
       setUnreadCount(0)
       return
@@ -44,16 +45,21 @@ export function NotificationBell() {
         total: 0,
         unread_count: 0,
       }))
-      setNotifications(res.items || [])
-      setUnreadCount(res.unread_count || 0)
+      if (res && res.items) {
+        setNotifications(res.items)
+        setUnreadCount(res.unread_count || 0)
+      }
     } catch {
       // Falha silenciosa para não poluir console
     }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (isAuth) {
       loadNotifications()
+    } else {
+      setNotifications([])
+      setUnreadCount(0)
     }
   }, [loadNotifications, isAuth])
 
@@ -61,7 +67,7 @@ export function NotificationBell() {
   useRealtime(
     'notifications',
     () => {
-      if (!pb.authStore.isValid) return
+      if (!isAuth || !pb.authStore.isValid) return
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         loadNotifications()
@@ -70,24 +76,40 @@ export function NotificationBell() {
     isAuth,
   )
 
+  // Se não estiver autenticado, não renderiza o sino ou renderiza nada
+  if (!isAuth) {
+    return null
+  }
+
   const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    await markNotificationRead(id)
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
-    )
-    setUnreadCount((c) => Math.max(0, c - 1))
+    if (!isAuth || !pb.authStore.isValid) return
+    try {
+      await markNotificationRead(id)
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
+      )
+      setUnreadCount((c) => Math.max(0, c - 1))
+    } catch {
+      /* silencioso */
+    }
   }
 
   const handleMarkAllAsRead = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    await markAllNotificationsRead()
-    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
-    setUnreadCount(0)
+    if (!isAuth || !pb.authStore.isValid) return
+    try {
+      await markAllNotificationsRead()
+      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
+      setUnreadCount(0)
+    } catch {
+      /* silencioso */
+    }
   }
 
   const handleTriggerCheck = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
+    if (!isAuth || !pb.authStore.isValid) return
     setLoading(true)
     try {
       await triggerNotificationCheck().catch(() => ({ success: false }))

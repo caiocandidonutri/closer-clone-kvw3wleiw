@@ -40,30 +40,40 @@ export default function Dashboard() {
   const [releasingId, setReleasingId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'revenue'>('overview')
 
+  const isAuth = pb.authStore.isValid
+
   const loadData = async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false)
+      return
+    }
     try {
       const [pats, convs, notifsRes] = await Promise.all([
         listPatients(),
         getConversations(),
-        getNotifications(1, 20),
+        getNotifications(1, 20).catch(() => ({ items: [], total: 0, unread_count: 0 })),
       ])
-      setPatients(pats)
-      setContacts(convs)
-      setNotifications(notifsRes.items || [])
-    } catch (err) {
-      console.error('[Dashboard] load error:', err)
+      setPatients(pats || [])
+      setContacts(convs || [])
+      setNotifications(notifsRes?.items || [])
+    } catch {
+      // Falha silenciosa
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (isAuth) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [isAuth])
 
-  useRealtime('patients', () => loadData())
-  useRealtime('messages', () => loadData())
-  useRealtime('notifications', () => loadData())
+  useRealtime('patients', () => loadData(), isAuth)
+  useRealtime('messages', () => loadData(), isAuth)
+  useRealtime('notifications', () => loadData(), isAuth)
 
   const handleQuickRelease = async (patient: Patient) => {
     setReleasingId(patient.id)

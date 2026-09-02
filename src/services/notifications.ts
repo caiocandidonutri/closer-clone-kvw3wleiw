@@ -35,7 +35,6 @@ export async function getNotifications(page = 1, perPage = 50): Promise<GetNotif
       unread_count: items.filter((i) => !i.read).length,
     }
   } catch (err) {
-    console.error('[notificationsService] getNotifications error:', err)
     return { items: [], total: 0, unread_count: 0 }
   }
 }
@@ -67,11 +66,8 @@ export async function markAllNotificationsRead(): Promise<boolean> {
       method: 'POST',
     })
     return true
-  } catch (endpointErr) {
-    console.warn(
-      '[notificationsService] endpoint /notifications-read-all failed, fallback to direct collection update:',
-      endpointErr,
-    )
+  } catch {
+    /* fallback direto */
   }
 
   // 2. Fallback direto via SDK PocketBase (atualiza registros do usuário autenticado)
@@ -89,18 +85,18 @@ export async function markAllNotificationsRead(): Promise<boolean> {
       ),
     )
     return true
-  } catch (manualErr) {
-    console.error('[notificationsService] manual markAllRead error:', manualErr)
+  } catch {
     return false
   }
 }
 
 export async function deleteNotification(id: string): Promise<boolean> {
+  if (!pb.authStore.isValid) return false
+
   try {
     await pb.collection('notifications').delete(id)
     return true
-  } catch (err) {
-    console.error('[notificationsService] deleteNotification error:', err)
+  } catch {
     return false
   }
 }
@@ -109,6 +105,10 @@ export async function deleteAllReadNotifications(): Promise<{
   success: boolean
   deleted_count?: number
 }> {
+  if (!pb.authStore.isValid) {
+    return { success: false, deleted_count: 0 }
+  }
+
   try {
     const res = await pb.send<{ success: boolean; deleted_count: number }>(
       '/backend/v1/notifications/delete-read',
@@ -117,11 +117,7 @@ export async function deleteAllReadNotifications(): Promise<{
       },
     )
     return res
-  } catch (err) {
-    console.warn(
-      '[notificationsService] delete-read endpoint failed, fallback to manual list:',
-      err,
-    )
+  } catch {
     try {
       const readRecords = await pb.collection('notifications').getFullList({
         filter: 'read = true',
@@ -137,8 +133,7 @@ export async function deleteAllReadNotifications(): Promise<{
         }
       }
       return { success: true, deleted_count: count }
-    } catch (manualErr) {
-      console.error('[notificationsService] manual delete error:', manualErr)
+    } catch {
       return { success: false, deleted_count: 0 }
     }
   }
@@ -154,6 +149,13 @@ export async function generateNotificationAiDraft(params: {
   patient_name?: string
   patient_phone?: string
 }> {
+  if (!pb.authStore.isValid) {
+    return {
+      success: false,
+      draft: '',
+    }
+  }
+
   try {
     const res = await pb.send<{
       success: boolean
@@ -165,8 +167,7 @@ export async function generateNotificationAiDraft(params: {
       body: params,
     })
     return res
-  } catch (err: any) {
-    console.error('[notificationsService] generateAiDraft error:', err)
+  } catch {
     return {
       success: false,
       draft: '',
@@ -183,6 +184,14 @@ export async function sendNotificationWhatsapp(params: {
   whatsapp_sent: boolean
   error?: string
 }> {
+  if (!pb.authStore.isValid) {
+    return {
+      success: false,
+      whatsapp_sent: false,
+      error: 'Usuário não autenticado',
+    }
+  }
+
   try {
     const res = await pb.send<{
       success: boolean
@@ -194,7 +203,6 @@ export async function sendNotificationWhatsapp(params: {
     })
     return res
   } catch (err: any) {
-    console.error('[notificationsService] sendWhatsapp error:', err)
     return {
       success: false,
       whatsapp_sent: false,

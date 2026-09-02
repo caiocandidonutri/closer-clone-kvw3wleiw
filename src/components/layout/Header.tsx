@@ -52,7 +52,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <NotificationBell />
+        {user && <NotificationBell />}
         <LanguageSwitcher />
         <DropdownMenu>
           <DropdownMenuTrigger className="outline-none">
