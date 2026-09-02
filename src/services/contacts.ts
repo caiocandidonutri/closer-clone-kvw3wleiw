@@ -24,6 +24,7 @@ export interface Contact {
   score?: number | null
   last_message_from_me?: boolean | null
   pipeline_stage?: string | null
+  patient_id?: string | null
 }
 
 export const getContacts = async (): Promise<Contact[]> =>

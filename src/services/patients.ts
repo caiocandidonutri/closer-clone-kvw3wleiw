@@ -84,6 +84,38 @@ export async function listPatients(): Promise<Patient[]> {
 
 export const getPatients = listPatients
 
+export async function sendPaymentLinkToPatient(params: {
+  patient_id: string
+  plan_slug?: string
+}): Promise<{
+  success: boolean
+  whatsapp_sent: boolean
+  payment_link?: string
+  plan_name?: string
+  error?: string
+}> {
+  try {
+    const res = await pb.send<{
+      success: boolean
+      whatsapp_sent: boolean
+      payment_link?: string
+      plan_name?: string
+      error?: string
+    }>('/backend/v1/patients/send-payment-link', {
+      method: 'POST',
+      body: params,
+    })
+    return res
+  } catch (err: any) {
+    console.error('[patientsService] sendPaymentLink error:', err)
+    return {
+      success: false,
+      whatsapp_sent: false,
+      error: err?.message || 'Falha ao enviar link de pagamento',
+    }
+  }
+}
+
 export async function getPatient(id: string): Promise<Patient | null> {
   try {
     const record = await pb.collection('patients').getOne<Patient>(id)

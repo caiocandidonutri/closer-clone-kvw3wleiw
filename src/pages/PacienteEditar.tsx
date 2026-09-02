@@ -22,9 +22,12 @@ import {
   Apple,
   ShieldCheck,
   HeartPulse,
+  CreditCard,
+  Send,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { SubscriptionPlanSlug, PatientStatus } from '@/lib/types'
+import { sendPaymentLinkToPatient } from '@/services/patients'
 
 const PLAN_LABELS: Record<SubscriptionPlanSlug, string> = {
   free_trial: 'Grátis · 3 msgs (total)',
@@ -89,6 +92,7 @@ export default function PacienteEditar() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [releasing, setReleasing] = useState(false)
+  const [sendingLink, setSendingLink] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
 
   useEffect(() => {
@@ -252,20 +256,57 @@ export default function PacienteEditar() {
           </div>
         </div>
 
-        <Button
-          type="button"
-          onClick={handleReleaseBonus}
-          disabled={releasing}
-          variant="outline"
-          className="rounded-full border-primary/30 text-primary hover:bg-primary/10 shrink-0"
-        >
-          {releasing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Unlock className="mr-2 h-4 w-4" />
-          )}
-          Liberar +5 mensagens
-        </Button>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button
+            type="button"
+            onClick={async () => {
+              if (!id) return
+              setSendingLink(true)
+              try {
+                const res = await sendPaymentLinkToPatient({
+                  patient_id: id,
+                  plan_slug: form.subscription_plan,
+                })
+                if (res.success && res.whatsapp_sent) {
+                  toast.success(
+                    `Link do Mercado Pago enviado para ${form.name || 'o paciente'} no WhatsApp! 💚`,
+                  )
+                } else {
+                  toast.error(res.error || 'Falha ao enviar link de pagamento')
+                }
+              } catch (err: any) {
+                toast.error(err?.message || 'Erro ao enviar link de pagamento')
+              } finally {
+                setSendingLink(false)
+              }
+            }}
+            disabled={sendingLink}
+            variant="default"
+            className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-subtle flex items-center gap-1.5 text-xs h-9"
+          >
+            {sendingLink ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CreditCard className="h-3.5 w-3.5" />
+            )}
+            Enviar Link Mercado Pago
+          </Button>
+
+          <Button
+            type="button"
+            onClick={handleReleaseBonus}
+            disabled={releasing}
+            variant="outline"
+            className="rounded-full border-primary/30 text-primary hover:bg-primary/10 text-xs h-9"
+          >
+            {releasing ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Unlock className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Liberar +5 mensagens
+          </Button>
+        </div>
       </div>
 
       <Card className="border-border/40 shadow-subtle rounded-[2rem] overflow-hidden">

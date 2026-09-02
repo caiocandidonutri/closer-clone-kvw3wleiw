@@ -1,15 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
+  deleteAllReadNotifications,
   triggerNotificationCheck,
+  generateNotificationAiDraft,
+  sendNotificationWhatsapp,
 } from '@/services/notifications'
 import type { AppNotification, NotificationType } from '@/lib/types'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Bell,
   AlertTriangle,
@@ -22,6 +45,11 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  Trash2,
+  Sparkles,
+  Send,
+  Loader2,
+  MessageSquare,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -37,11 +65,27 @@ export default function NotificationsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 10
   const navigate = useNavigate()
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const loadData = async () => {
+  // Dialog de envio com IA
+  const [selectedNotif, setSelectedNotif] = useState<AppNotification | null>(null)
+  const [draftMessage, setDraftMessage] = useState('')
+  const [generatingDraft, setGeneratingDraft] = useState(false)
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false)
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false)
+
+  // Confirmação de exclusão em lote de lidas
+  const [isDeleteReadOpen, setIsDeleteReadOpen] = useState(false)
+  const [deletingRead, setDeletingRead] = useState(false)
+
+  // Confirmação de exclusão individual
+  const [notifToDelete, setNotifToDelete] = useState<string | null>(null)
+
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await getNotifications()
+      // Carrega até 100 notificações mais recentes
+      const res = await getNotifications(1, 100)
       setNotifications(res.items || [])
     } catch (err) {
       console.error('[NotificationsPage] load error:', err)
@@ -49,14 +93,17 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
 
   useRealtime('notifications', () => {
-    loadData()
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      loadData()
+    }, 400)
   })
 
   const handleMarkRead = async (id: string) => {
@@ -71,6 +118,33 @@ export default function NotificationsPage() {
     toast.success('Todas as notificações foram marcadas como lidas')
   }
 
+  const handleDeleteSingle = async (id: string) => {
+    const success = await deleteNotification(id)
+    if (success) {
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+      toast.success('Notificação excluída')
+    } else {
+      toast.error('Erro ao excluir notificação')
+    }
+    setNotifToDelete(null)
+  }
+
+  const handleDeleteAllRead = async () => {
+    setDeletingRead(true)
+    try {
+      const res = await deleteAllReadNotifications()
+      if (res.success) {
+        setNotifications((prev) => prev.filter((n) => !n.read))
+        toast.success(`${res.deleted_count || 0} notificação(ões) lida(s) excluída(s)!`)
+      } else {
+        toast.error('Erro ao excluir notificações lidas')
+      }
+    } finally {
+      setDeletingRead(false)
+      setIsDeleteReadOpen(false)
+    }
+  }
+
   const handleTriggerCheck = async () => {
     setChecking(true)
     try {
@@ -81,10 +155,66 @@ export default function NotificationsPage() {
       } else {
         toast.info('Verificação concluída. Nenhuma nova pendência.')
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro ao verificar notificações')
     } finally {
       setChecking(false)
+    }
+  }
+
+  // Abertura do modal de Preparar Mensagem da IA
+  const handleOpenAiModal = async (n: AppNotification) => {
+    setSelectedNotif(n)
+    setDraftMessage('')
+    setIsAiModalOpen(true)
+    setGeneratingDraft(true)
+
+    try {
+      const res = await generateNotificationAiDraft({
+        notification_id: n.id,
+        patient_id: n.patient_id,
+      })
+      if (res.success && res.draft) {
+        setDraftMessage(res.draft)
+      } else {
+        setDraftMessage(
+          `Olá, ${n.metadata?.patient_name || 'paciente'}! 💚 Passando para saber como está sua rotina e se posso te ajudar com alguma dúvida da sua alimentação hoje! 🥗✨`,
+        )
+      }
+    } catch (err) {
+      console.error('[generateAiDraft] error:', err)
+      setDraftMessage(
+        `Olá, ${n.metadata?.patient_name || 'paciente'}! 💚 Como estão as suas refeições hoje? Estou à disposição para tirar qualquer dúvida alimentar! ✨`,
+      )
+    } finally {
+      setGeneratingDraft(false)
+    }
+  }
+
+  const handleSendAiMessage = async () => {
+    if (!selectedNotif || !draftMessage.trim()) return
+    setSendingWhatsapp(true)
+    try {
+      const res = await sendNotificationWhatsapp({
+        notification_id: selectedNotif.id,
+        patient_id: selectedNotif.patient_id,
+        message: draftMessage.trim(),
+      })
+
+      if (res.success && res.whatsapp_sent) {
+        toast.success('Mensagem enviada com sucesso no WhatsApp do paciente! 💚')
+        // Marca como lida localmente
+        setNotifications((prev) =>
+          prev.map((item) => (item.id === selectedNotif.id ? { ...item, read: true } : item)),
+        )
+        setIsAiModalOpen(false)
+      } else {
+        toast.error(res.error || 'Não foi possível enviar a mensagem pelo WhatsApp')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao enviar mensagem pelo WhatsApp')
+    } finally {
+      setSendingWhatsapp(false)
     }
   }
 
@@ -142,6 +272,7 @@ export default function NotificationsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const unreadCount = notifications.filter((n) => !n.read).length
+  const readCount = notifications.filter((n) => n.read).length
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 p-6 md:p-10 animate-in fade-in duration-500 bg-background min-h-full">
@@ -169,8 +300,8 @@ export default function NotificationsPage() {
             )}
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
-            Alertas automáticos sobre consumo de mensagens, expiração de planos e inatividade dos
-            pacientes.
+            Alertas automáticos com mensagens personalizadas da IA prontas para envio aos pacientes
+            no WhatsApp.
           </p>
         </div>
 
@@ -185,6 +316,7 @@ export default function NotificationsPage() {
             <RefreshCw className={`h-4 w-4 mr-1.5 ${checking ? 'animate-spin' : ''}`} />
             Verificar Agora
           </Button>
+
           {unreadCount > 0 && (
             <Button
               variant="default"
@@ -194,6 +326,18 @@ export default function NotificationsPage() {
             >
               <CheckCheck className="h-4 w-4 mr-1.5" />
               Marcar Todas como Lidas
+            </Button>
+          )}
+
+          {readCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDeleteReadOpen(true)}
+              className="rounded-full shadow-subtle text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Excluir Lidas ({readCount})
             </Button>
           )}
         </div>
@@ -255,6 +399,17 @@ export default function NotificationsPage() {
           >
             Não Lidas ({unreadCount})
           </Button>
+          <Button
+            variant={filterRead === 'read' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setFilterRead('read')
+              setCurrentPage(1)
+            }}
+            className="rounded-full text-xs h-8"
+          >
+            Lidas ({readCount})
+          </Button>
         </div>
       </div>
 
@@ -300,11 +455,11 @@ export default function NotificationsPage() {
                         : 'bg-primary/5 dark:bg-primary/10 hover:bg-primary/10'
                     }`}
                   >
-                    <div className="flex items-start gap-3.5 min-w-0">
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
                       <div className="p-2 rounded-xl bg-background border border-border shadow-xs shrink-0 mt-0.5">
                         {getNotificationIcon(n.type)}
                       </div>
-                      <div className="space-y-1 min-w-0">
+                      <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className={`text-sm ${
@@ -329,7 +484,18 @@ export default function NotificationsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0 flex-wrap">
+                      {/* Botão Preparar Mensagem da IA */}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleOpenAiModal(n)}
+                        className="h-8 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-subtle flex items-center gap-1.5"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Preparar mensagem (IA)
+                      </Button>
+
                       {!n.read ? (
                         <Button
                           variant="outline"
@@ -341,11 +507,22 @@ export default function NotificationsPage() {
                           Marcar lida
                         </Button>
                       ) : (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 px-1">
                           <CheckCheck className="h-3.5 w-3.5 text-primary" />
                           Lida
                         </span>
                       )}
+
+                      {/* Botão de Excluir individual */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setNotifToDelete(n.id)}
+                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Excluir notificação"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 )
@@ -387,6 +564,154 @@ export default function NotificationsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Preparar e Editar Mensagem da IA */}
+      <Dialog open={isAiModalOpen} onOpenChange={setIsAiModalOpen}>
+        <DialogContent className="sm:max-w-xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
+              Mensagem Personalizada da IA
+            </DialogTitle>
+            <DialogDescription>
+              A Yasa gerou uma mensagem sob medida para o paciente com base nesta notificação. Você
+              pode revisar e editar o texto antes de disparar pelo WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {selectedNotif && (
+              <div className="p-3 bg-muted/40 rounded-xl border border-border/60 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-foreground">
+                    {selectedNotif.metadata?.patient_name || 'Paciente'}
+                  </span>
+                  {getTypeBadge(selectedNotif.type)}
+                </div>
+                <p className="text-muted-foreground">{selectedNotif.message}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                <span>Mensagem para o WhatsApp:</span>
+                {generatingDraft && (
+                  <span className="text-primary text-[11px] font-semibold flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Gerando sugestão da Yasa...
+                  </span>
+                )}
+              </label>
+
+              <Textarea
+                rows={7}
+                value={draftMessage}
+                onChange={(e) => setDraftMessage(e.target.value)}
+                placeholder="Carregando mensagem da IA..."
+                disabled={generatingDraft}
+                className="rounded-xl resize-none text-sm leading-relaxed"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => selectedNotif && handleOpenAiModal(selectedNotif)}
+              disabled={generatingDraft || sendingWhatsapp}
+              className="rounded-full text-xs font-semibold"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 mr-1.5 ${generatingDraft ? 'animate-spin' : ''}`}
+              />
+              Regenerar com IA
+            </Button>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsAiModalOpen(false)}
+                disabled={sendingWhatsapp}
+                className="rounded-full"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSendAiMessage}
+                disabled={sendingWhatsapp || generatingDraft || !draftMessage.trim()}
+                className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-5 shadow-subtle"
+              >
+                {sendingWhatsapp ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Enviar no WhatsApp
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão de todas as lidas */}
+      <AlertDialog open={isDeleteReadOpen} onOpenChange={setIsDeleteReadOpen}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Excluir todas as notificações lidas?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação removerá permanentemente todas as {readCount} notificações já marcadas como
+              lidas para manter seu painel leve e limpo. Notificações não lidas não serão afetadas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAllRead}
+              disabled={deletingRead}
+              className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingRead ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1.5" />
+              )}
+              Confirmar exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão individual */}
+      <AlertDialog open={!!notifToDelete} onOpenChange={(open) => !open && setNotifToDelete(null)}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Excluir notificação?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza de que deseja remover esta notificação? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => notifToDelete && handleDeleteSingle(notifToDelete)}
+              className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

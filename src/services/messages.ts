@@ -9,6 +9,7 @@ export interface Message {
   feedback: 'useful' | 'not_useful' | null
   needs_human: boolean
   ai_response_seconds: number | null
+  flagged?: boolean
   created: string
   updated: string
 }
@@ -18,6 +19,10 @@ export const getMessages = async (contactId: string): Promise<Message[]> =>
     filter: `contact = "${contactId}"`,
     sort: 'timestamp',
   })
+
+export const toggleMessageFlag = async (messageId: string, flagged: boolean): Promise<void> => {
+  await pb.collection('messages').update(messageId, { flagged })
+}
 
 export const setMessageFeedback = async (
   messageId: string,

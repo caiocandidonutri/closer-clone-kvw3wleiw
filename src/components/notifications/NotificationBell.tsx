@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Bell, AlertTriangle, Clock, Moon, Check, CheckCheck, RefreshCw } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Bell, AlertTriangle, Clock, Moon, Check, RefreshCw } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
@@ -27,24 +26,29 @@ export function NotificationBell() {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
-      const res = await getNotifications()
+      // O sino busca apenas as 5 mais recentes para performance leve
+      const res = await getNotifications(1, 5)
       setNotifications(res.items || [])
       setUnreadCount(res.unread_count || 0)
     } catch (err) {
       console.error('[NotificationBell] load error:', err)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadNotifications()
-  }, [])
+  }, [loadNotifications])
 
-  // Subscribe to real-time changes on notifications collection
+  // Debounced realtime subscribe: não dispara re-fetch imediato a cada rajada de evento
   useRealtime('notifications', () => {
-    loadNotifications()
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      loadNotifications()
+    }, 400)
   })
 
   const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {

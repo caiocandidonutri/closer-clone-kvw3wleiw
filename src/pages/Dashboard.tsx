@@ -1,308 +1,556 @@
-import { useEffect, useState } from 'react'
-import { getContacts, Contact } from '@/services/contacts'
-import { listPatients } from '@/services/patients'
-import type { Patient } from '@/lib/types'
-import { useRealtime } from '@/hooks/use-realtime'
-import { useLanguage } from '@/hooks/use-language'
-import { Card, CardContent } from '@/components/ui/card'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useEffect, useState, useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RevenueTab } from '@/components/dashboard/RevenueTab'
 import {
   Users,
-  Clock,
-  CheckCircle,
-  Loader2,
-  ArrowRight,
-  UserPlus,
-  AlertCircle,
+  MessageSquare,
+  AlertTriangle,
+  Zap,
   TrendingUp,
-  LayoutDashboard,
-  DollarSign,
+  CreditCard,
+  Plus,
+  RefreshCw,
+  Bell,
+  Sparkles,
+  ArrowRight,
+  Send,
+  Loader2,
+  Calendar,
+  CheckCircle2,
+  ShoppingBag,
 } from 'lucide-react'
+import { useLanguage } from '@/hooks/use-language'
+import { useRealtime } from '@/hooks/use-realtime'
+import { listPatients, releaseMessagesForPatient } from '@/services/patients'
+import { getConversations } from '@/services/contacts'
+import { getNotifications } from '@/services/notifications'
+import type { Patient, Contact, AppNotification } from '@/lib/types'
 import { useNavigate } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { RevenueTab } from '@/components/dashboard/RevenueTab'
+import { toast } from 'sonner'
+import pb from '@/lib/pocketbase/client'
 
-export default function Dashboard() {
+export function Dashboard() {
   const { t } = useLanguage()
-  const dateLocale = ptBR
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('overview')
   const navigate = useNavigate()
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [releasingId, setReleasingId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'overview' | 'revenue'>('overview')
 
-  const load = async () => {
+  const loadData = async () => {
     try {
-      const [data, pats] = await Promise.all([
-        getContacts(),
-        listPatients().catch(() => [] as Patient[]),
+      const [pats, convs, notifsRes] = await Promise.all([
+        listPatients(),
+        getConversations(),
+        getNotifications(1, 20),
       ])
-      setContacts(data)
       setPatients(pats)
+      setContacts(convs)
+      setNotifications(notifsRes.items || [])
     } catch (err) {
-      console.error('[Dashboard] fetch error:', err)
+      console.error('[Dashboard] load error:', err)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    loadData()
   }, [])
 
-  useRealtime('contacts', () => {
-    load()
-  })
-  useRealtime('patients', () => {
-    load()
-  })
+  useRealtime('patients', () => loadData())
+  useRealtime('messages', () => loadData())
+  useRealtime('notifications', () => loadData())
 
-  const pending = contacts.filter((c) => c.status === 'pending')
-  const responded = contacts.filter((c) => c.status === 'responded')
+  const handleQuickRelease = async (patient: Patient) => {
+    setReleasingId(patient.id)
+    try {
+      const res = await releaseMessagesForPatient(patient.id, 5)
+      if (res.success) {
+        toast.success(`+5 mensagens liberadas para ${patient.name}! 💚`)
+        await loadData()
+      } else {
+        toast.error('Erro ao liberar mensagens')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao liberar mensagens')
+    } finally {
+      setReleasingId(null)
+    }
+  }
 
-  const avgWaitSeconds = pending.length
-    ? Math.round(pending.reduce((acc, c) => acc + (c.wait_time_seconds || 0), 0) / pending.length)
-    : 0
-  const avgWaitText =
-    avgWaitSeconds === 0
-      ? '-'
-      : avgWaitSeconds >= 3600
-        ? `${Math.round(avgWaitSeconds / 3600)}h`
-        : `${Math.round(avgWaitSeconds / 60)}m`
+  // Estatísticas gerais
+  const activePatients = useMemo(
+    () => patients.filter((p) => p.status === 'active' || p.status === 'trial'),
+    [patients],
+  )
+  const pendingTriage = useMemo(
+    () => patients.filter((p) => !p.triaged && (p.status === 'active' || p.status === 'trial')),
+    [patients],
+  )
+  const pendingContacts = useMemo(() => contacts.filter((c) => c.status === 'pending'), [contacts])
 
-  // Patient panel stats
-  const activePatients = patients.filter((p) => p.status === 'active').length
-  const expiredPatients = patients.filter((p) => p.status === 'expired').length
-  const trialPatients = patients.filter((p) => p.status === 'trial').length
-  const engaged = patients.filter((p) => (p.message_count_used || 0) > 0).length
-  const engagementRate = patients.length ? Math.round((engaged / patients.length) * 100) : 0
+  // 1) Pacientes com limite quase cheio (>= 75% ou >= 80% do limite ou com menos de 5 msgs restantes)
+  const nearLimitPatients = useMemo(() => {
+    return patients
+      .filter((p) => {
+        const used = p.message_count_used || 0
+        const limit = p.message_count_limit || 0
+        if (limit <= 0) return false
+        const pct = (used / limit) * 100
+        return pct >= 75 || limit - used <= 5
+      })
+      .sort((a, b) => {
+        const pctA = a.message_count_used / (a.message_count_limit || 1)
+        const pctB = b.message_count_used / (b.message_count_limit || 1)
+        return pctB - pctA
+      })
+      .slice(0, 3)
+  }, [patients])
+
+  // 2) Resumo do dia (cálculo de interações hoje, compras e expirando)
+  const todaySummary = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    // Pacientes que falaram hoje (baseado em last_message_at dos contatos ou last_interaction)
+    const spokeTodayCount = contacts.filter((c) => {
+      const d = c.last_message_at ? c.last_message_at.slice(0, 10) : ''
+      return d === todayStr
+    }).length
+
+    // Compras / novos ativos hoje
+    const purchasesToday = patients.filter((p) => {
+      const s = p.subscription_start ? p.subscription_start.slice(0, 10) : ''
+      const c = p.created ? p.created.slice(0, 10) : ''
+      return (s === todayStr || c === todayStr) && p.status === 'active'
+    }).length
+
+    // Expirando nos próximos 3 dias
+    const now = Date.now()
+    const expiringSoonCount = patients.filter((p) => {
+      if (!p.subscription_end || p.status !== 'active') return false
+      const end = new Date(p.subscription_end).getTime()
+      const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24))
+      return diffDays >= 0 && diffDays <= 3
+    }).length
+
+    return {
+      spokeTodayCount,
+      purchasesToday,
+      expiringSoonCount,
+    }
+  }, [contacts, patients])
 
   return (
-    <div className="max-w-7xl mx-auto space-y-10 p-6 md:p-12 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple bg-background min-h-full">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto bg-background min-h-full">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-4xl font-bold tracking-tight text-foreground">{t('overview')}</h2>
-          <p className="text-muted-foreground mt-2 font-medium text-base">{t('crm_health')}</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+              {t('dashboard.welcome') || 'Painel Nutri Responde'}
+            </h1>
+            <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200">
+              <Sparkles className="h-3 w-3 mr-1 text-emerald-600" />
+              Yasa AI Ativa
+            </Badge>
+          </div>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Acompanhe em tempo real as conversas, limites de mensagens e receitas da sua clínica.
+          </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
-          <TabsList className="grid grid-cols-2 p-1 bg-muted/60 rounded-2xl border border-border">
-            <TabsTrigger
-              value="overview"
-              className="rounded-xl px-4 py-2 font-semibold text-xs sm:text-sm flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle"
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Alternador Overview / Financeiro */}
+          <div className="inline-flex rounded-xl p-1 bg-muted/60 border border-border">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'overview'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              <LayoutDashboard className="h-4 w-4" />
               Visão Geral
-            </TabsTrigger>
-            <TabsTrigger
-              value="revenue"
-              className="rounded-xl px-4 py-2 font-semibold text-xs sm:text-sm flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle"
+            </button>
+            <button
+              onClick={() => setActiveTab('revenue')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                activeTab === 'revenue'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              <DollarSign className="h-4 w-4 text-emerald-600" />
-              Receita
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+              <CreditCard className="h-3.5 w-3.5 text-primary" />
+              Receita & Planos
+            </button>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => navigate('/app/pacientes/novo')}
+            className="rounded-full shadow-subtle bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            Novo Paciente
+          </Button>
+        </div>
       </div>
 
       {activeTab === 'revenue' ? (
         <RevenueTab />
       ) : (
-        <div className="space-y-10">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-            <Card>
-              <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                    {t('dashboard_pending')}
-                  </span>
-                  <div className="bg-amber-100 p-3 rounded-full text-amber-600">
-                    <Clock className="h-5 w-5" />
+        <>
+          {/* RESUMO DO DIA BANNER */}
+          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-emerald-500/5 to-primary/5 p-5 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 shadow-xs">
+                  <Calendar className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    Resumo do Dia
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      (
+                      {new Date().toLocaleDateString('pt-BR', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                      })}
+                      )
+                    </span>
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                    <span className="flex items-center gap-1 font-semibold text-foreground">
+                      <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                      {todaySummary.spokeTodayCount}{' '}
+                      {todaySummary.spokeTodayCount === 1
+                        ? 'paciente falou hoje'
+                        : 'pacientes falaram hoje'}
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-semibold text-foreground">
+                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />
+                      {todaySummary.purchasesToday}{' '}
+                      {todaySummary.purchasesToday === 1
+                        ? 'compra/adesão hoje'
+                        : 'compras/adesões hoje'}
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                      {todaySummary.expiringSoonCount}{' '}
+                      {todaySummary.expiringSoonCount === 1
+                        ? 'plano expirando'
+                        : 'planos expirando'}
+                    </span>
                   </div>
                 </div>
-                <div className="text-5xl font-bold tracking-tighter text-foreground">
-                  {loading ? '-' : pending.length}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/app/notifications')}
+                  className="rounded-full text-xs font-semibold bg-background/80 hover:bg-background shadow-2xs"
+                >
+                  <Bell className="h-3.5 w-3.5 mr-1.5 text-primary" />
+                  Ver Notificações
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => navigate('/app/conversas')}
+                  className="rounded-full text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs"
+                >
+                  Abrir WhatsApp
+                  <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI CARDS */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card
+              className="border-border shadow-subtle hover:border-primary/40 transition-colors cursor-pointer rounded-2xl"
+              onClick={() => navigate('/app/pacientes')}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Pacientes Ativos
+                </CardTitle>
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Users className="h-4 w-4" />
                 </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-black text-foreground">{activePatients.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {patients.length} pacientes cadastrados no total
+                </p>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                    {t('dashboard_responded')}
-                  </span>
-                  <div className="bg-green-100 p-3 rounded-full text-green-600">
-                    <CheckCircle className="h-5 w-5" />
-                  </div>
+
+            <Card
+              className="border-border shadow-subtle hover:border-primary/40 transition-colors cursor-pointer rounded-2xl"
+              onClick={() => navigate('/app/conversas')}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Aguardando Resposta
+                </CardTitle>
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+                  <MessageSquare className="h-4 w-4" />
                 </div>
-                <div className="text-5xl font-bold tracking-tighter text-foreground">
-                  {loading ? '-' : responded.length}
-                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-black text-foreground">{pendingContacts.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {contacts.length} conversas registradas
+                </p>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
-                    {t('dashboard_avg_wait')}
-                  </span>
-                  <div className="bg-blue-100 p-3 rounded-full text-blue-600">
-                    <Users className="h-5 w-5" />
-                  </div>
+
+            <Card
+              className="border-border shadow-subtle hover:border-primary/40 transition-colors cursor-pointer rounded-2xl"
+              onClick={() => navigate('/app/notifications')}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Notificações Pendentes
+                </CardTitle>
+                <div className="p-2 rounded-xl bg-red-500/10 text-red-600">
+                  <Bell className="h-4 w-4" />
                 </div>
-                <div className="text-5xl font-bold tracking-tighter text-foreground">
-                  {loading && contacts.length === 0 ? '-' : avgWaitText}
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-black text-foreground">
+                  {notifications.filter((n) => !n.read).length}
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Alertas proativos gerados pela Yasa
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="border-border shadow-subtle hover:border-primary/40 transition-colors cursor-pointer rounded-2xl"
+              onClick={() => navigate('/app/pacientes')}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Triagem Pendente
+                </CardTitle>
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-black text-foreground">{pendingTriage.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pacientes sem ficha de anamnese completa
+                </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Patient panel */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <UserPlus className="h-6 w-6 text-primary" />
-                Pacientes
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="rounded-full text-muted-foreground hover:text-foreground"
-                onClick={() => navigate('/app/pacientes')}
-              >
-                Ver todos
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              <Card>
-                <CardContent className="p-4 md:p-5 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
-                      Ativos
-                    </span>
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  </div>
-                  <span className="text-3xl font-bold tracking-tighter text-foreground">
-                    {loading ? '-' : activePatients}
-                  </span>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 md:p-5 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
-                      Inadimplentes
-                    </span>
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                  </div>
-                  <span className="text-3xl font-bold tracking-tighter text-foreground">
-                    {loading ? '-' : expiredPatients}
-                  </span>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 md:p-5 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
-                      Em Trial
-                    </span>
-                    <Clock className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <span className="text-3xl font-bold tracking-tighter text-foreground">
-                    {loading ? '-' : trialPatients}
-                  </span>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 md:p-5 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
-                      Engajamento
-                    </span>
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                  </div>
-                  <span className="text-3xl font-bold tracking-tighter text-foreground">
-                    {loading ? '-' : engagementRate}%
-                  </span>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          <div className="pb-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold tracking-tight text-foreground">
-                {t('top_leads')}
-              </h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground"
-                onClick={() => navigate('/app/contacts')}
-              >
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
-              </div>
-            ) : contacts.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center font-semibold py-12">
-                {t('no_contacts')}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {contacts.slice(0, 6).map((contact) => (
-                  <div
-                    key={contact.id}
-                    className="flex items-center justify-between py-3.5 px-3 -mx-3 rounded-2xl hover:bg-muted transition-all duration-300 cursor-pointer group"
-                    onClick={() => navigate(`/app/chat/${contact.id}`)}
-                  >
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-11 w-11 border-2 border-border shadow-sm">
-                        <AvatarImage src={contact.avatar_url || ''} />
-                        <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
-                          {contact.name?.charAt(0) || '#'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-bold text-[15px] tracking-tight text-foreground group-hover:text-primary transition-colors">
-                          {contact.name || t('unknown')}
-                        </p>
-                        <p className="text-[13px] text-muted-foreground font-semibold truncate max-w-[260px]">
-                          {contact.last_message ||
-                            (contact.created
-                              ? formatDistanceToNow(new Date(contact.created), {
-                                  addSuffix: true,
-                                  locale: dateLocale,
-                                })
-                              : '')}
-                        </p>
-                      </div>
+          {/* SEÇÃO PRINCIPAL: Pacientes Limite Quase Cheio + Ações Rápidas */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* CARD: Pacientes com limite quase cheio (Ocupa 2 colunas) */}
+            <Card className="lg:col-span-2 border-border shadow-subtle rounded-2xl overflow-hidden">
+              <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600">
+                      <AlertTriangle className="h-5 w-5" />
                     </div>
-                    <Badge
-                      variant="outline"
-                      className={
-                        contact.status === 'pending'
-                          ? 'bg-amber-100/50 text-amber-600 border-amber-200 text-[11px] px-2.5 py-0.5'
-                          : 'bg-green-100/50 text-green-600 border-green-200 text-[11px] px-2.5 py-0.5'
-                      }
-                    >
-                      {contact.status === 'pending' ? t('status_pending') : t('status_responded')}
-                    </Badge>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Pacientes com Limite Quase Cheio
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">
+                        Pacientes mais próximos de travar o limite. Libere +5 mensagens em 1 clique.
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate('/app/pacientes')}
+                    className="text-xs font-semibold text-primary hover:text-primary rounded-full"
+                  >
+                    Ver todos
+                    <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-0 divide-y divide-border/60">
+                {nearLimitPatients.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <CheckCircle2 className="h-10 w-10 text-emerald-500/40 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-foreground">
+                      Tudo sob controle! Nenhum paciente próximo do limite.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Os pacientes com &ge;75% de uso aparecerão aqui automaticamente.
+                    </p>
+                  </div>
+                ) : (
+                  nearLimitPatients.map((p) => {
+                    const used = p.message_count_used || 0
+                    const limit = p.message_count_limit || 0
+                    const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
+                    const remaining = Math.max(0, limit - used)
+                    const isReleasing = releasingId === p.id
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/20 transition-colors"
+                      >
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-foreground truncate">
+                              {p.name}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              {pct}% usado
+                            </Badge>
+                            {p.subscription_plan && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {p.subscription_plan}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Barra de progresso */}
+                          <div className="space-y-1 max-w-md">
+                            <div className="flex justify-between text-[11px] text-muted-foreground">
+                              <span>
+                                {used} de {limit} mensagens usadas
+                              </span>
+                              <span className="font-semibold text-amber-600">
+                                Restam {remaining} msgs
+                              </span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  pct >= 90
+                                    ? 'bg-red-500'
+                                    : pct >= 75
+                                      ? 'bg-amber-500'
+                                      : 'bg-primary'
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/app/pacientes/${p.id}/editar`)}
+                            className="rounded-full text-xs font-semibold"
+                          >
+                            Ver ficha
+                          </Button>
+
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleQuickRelease(p)}
+                            disabled={isReleasing}
+                            className="rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-subtle flex items-center gap-1.5"
+                          >
+                            {isReleasing ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5 text-amber-300" />
+                            )}
+                            Liberar +5 msgs
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </CardContent>
+            </Card>
+
+            {/* CARD: Ações Rápidas & Atalhos */}
+            <Card className="border-border shadow-subtle rounded-2xl">
+              <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Atalhos Rápidos
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/app/conversas')}
+                  className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <MessageSquare className="h-4 w-4 text-emerald-600" />
+                    Conversas do WhatsApp
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/app/notifications')}
+                  className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Bell className="h-4 w-4 text-amber-600" />
+                    Central de Notificações
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/app/receitas')}
+                  className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Banco de Receitas Fit
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/app/configuracoes')}
+                  className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Zap className="h-4 w-4 text-purple-600" />
+                    Configuração da IA Yasa
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </CardContent>
+            </Card>
           </div>
-        </div>
+        </>
       )}
     </div>
   )

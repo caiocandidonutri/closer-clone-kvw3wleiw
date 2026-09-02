@@ -171,6 +171,8 @@ export interface Patient {
   dietary_preference?: string | null
   triaged?: boolean
   triaged_at?: string | null
+  follow_up_status?: 'pending' | 'sent' | 'skipped'
+  follow_up_sent_at?: string
   owner: string
   created: string
   updated: string
@@ -269,6 +271,7 @@ export interface Message {
   timestamp: string
   needs_human?: boolean
   ai_response_seconds?: number
+  flagged?: boolean
   created: string
   updated: string
 }

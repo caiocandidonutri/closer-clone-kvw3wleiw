@@ -1,433 +1,514 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
 import { useContacts } from '@/hooks/use-contacts'
 import { useMessages } from '@/hooks/use-messages'
-import { useLanguage } from '@/hooks/use-language'
-import { getContact, Contact } from '@/services/contacts'
+import { useIntegration } from '@/hooks/use-integration'
 import { sendMessage, cleanupAndSyncWhatsapp } from '@/services/integrations'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { toggleMessageFlag } from '@/services/messages'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
-  ArrowLeft,
-  Send,
-  Loader2,
   Search,
-  MessageCircle,
+  Send,
+  MessageSquare,
   Sparkles,
-  Check,
+  Bot,
+  User,
+  Phone,
+  RefreshCw,
+  QrCode,
+  Bookmark,
+  BookmarkCheck,
   CheckCheck,
+  Zap,
 } from 'lucide-react'
-import { toast } from 'sonner'
-import { format, isToday, isYesterday } from 'date-fns'
+import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
-import type { Message } from '@/services/messages'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import pb from '@/lib/pocketbase/client'
 
-/** Layout de duas colunas espelhando o WhatsApp Web:
- *  - lista de pacientes (contatos) à esquerda, ordenados pela última mensagem
- *  - conversa à direita com bolhas estilo WhatsApp e campo de resposta
- * Usa dados reais do banco (contacts + messages) e envia pelo WhatsApp via Evolution API. */
-export default function Conversas() {
-  const { id } = useParams()
+const QUICK_REPLIES = [
+  'Olá! 💚 Como estão indo suas refeições hoje?',
+  'Vou verificar suas informações e já te retorno com uma orientação!',
+  'Me manda uma foto do seu prato/refeição para eu avaliar? 🥗📸',
+  'Lembre-se de beber água ao longo do dia! A hidratação é fundamental 💧',
+  'Parabéns pela dedicação! Manter a constância é o segredo do sucesso ✨',
+]
+
+export function Conversas() {
   const navigate = useNavigate()
-  const { t } = useLanguage()
-  const dateLocale = ptBR
-
-  const { contacts, loading: loadingContacts } = useContacts()
+  const { contacts, loading: loadingContacts, reload: reloadContacts } = useContacts()
+  const { integration, loading: loadingIntegration } = useIntegration()
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
+  const { messages, loading: loadingMessages } = useMessages(selectedContactId)
+  const [inputText, setInputText] = useState('')
+  const [sending, setSending] = useState(false)
   const [search, setSearch] = useState('')
-
-  // Sincronização inicial: limpa mocks e importava conversas reais do WhatsApp.
+  const [filter, setFilter] = useState<'all' | 'pending' | 'flagged'>('all')
   const [syncing, setSyncing] = useState(false)
-  const [hasSynced, setHasSynced] = useState(false)
-
-  useEffect(() => {
-    if (hasSynced) return
-    setHasSynced(true)
-    let active = true
-    setSyncing(true)
-    cleanupAndSyncWhatsapp()
-      .then((res) => {
-        if (!active) return
-        if (res && res.success) {
-          if (res.imported_contacts > 0 || res.removed_contacts > 0) {
-            toast.success(
-              `Conversas sincronizadas: ${res.imported_contacts} importadas, ${res.removed_contacts} mocks removidos.`,
-            )
-          }
-        }
-      })
-      .catch((err) => {
-        console.error('[Conversas] cleanup-sync:', err)
-      })
-      .finally(() => {
-        if (active) setSyncing(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [hasSynced])
-
-  // Conversa ativa
-  const [contact, setContact] = useState<Contact | null>(null)
-  const [loadingContact, setLoadingContact] = useState(false)
-  const { messages, loading: loadingMessages } = useMessages(id)
-
-  const [newMessage, setNewMessage] = useState('')
-  const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Mobile: alternar entre lista e chat
-  const [mobileShowChat, setMobileShowChat] = useState(false)
-
-  // Carrega o contato selecionado a partir do id da rota
+  // Otimização de Performance: Sincroniza via backend APENAS 1x por sessão (não em toda re-visita da aba)
   useEffect(() => {
-    if (!id) {
-      setContact(null)
-      setMobileShowChat(false)
-      return
+    if (integration?.status === 'CONNECTED') {
+      const sessionKey = `whatsapp_synced_${integration.instance_name || 'default'}`
+      const alreadySynced = sessionStorage.getItem(sessionKey)
+      if (!alreadySynced) {
+        sessionStorage.setItem(sessionKey, 'true')
+        cleanupAndSyncWhatsapp()
+          .then((res) => {
+            if (res?.success) reloadContacts()
+          })
+          .catch((err) => console.log('[Conversas] session sync warning:', err))
+      }
     }
-    setLoadingContact(true)
-    getContact(id)
-      .then((data) => {
-        setContact(data)
-        setMobileShowChat(true)
-      })
-      .catch((err) => {
-        console.error('[Conversas] contato:', err)
-        setContact(null)
-      })
-      .finally(() => setLoadingContact(false))
-  }, [id])
+  }, [integration?.status, integration?.instance_name, reloadContacts])
 
-  // Rola para o fim ao receber novas mensagens
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSelect = (c: Contact) => {
-    navigate(`/app/conversas/${c.id}`)
-  }
+  // Select first contact by default on load
+  useEffect(() => {
+    if (!selectedContactId && contacts.length > 0) {
+      setSelectedContactId(contacts[0].id)
+    }
+  }, [contacts, selectedContactId])
 
-  const handleBack = () => {
-    setMobileShowChat(false)
-    navigate('/app/conversas')
-  }
+  const selectedContact = contacts.find((c) => c.id === selectedContactId)
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !id) return
-    const text = newMessage.trim()
-    setNewMessage('')
-    setIsSending(true)
+  const handleManualSync = async () => {
+    setSyncing(true)
     try {
-      await sendMessage(id, text)
-    } catch (err: any) {
-      toast.error(err?.message || t('message_send_failed'))
-      // devolve o texto para o campo caso falhe
-      setNewMessage(text)
+      const res = await cleanupAndSyncWhatsapp()
+      if (res.success) {
+        toast.success(
+          `Sincronização concluída: ${res.synced_contacts || 0} contatos e ${res.synced_messages || 0} mensagens atualizadas!`,
+        )
+        reloadContacts()
+      } else {
+        toast.error('Não foi possível sincronizar o WhatsApp')
+      }
+    } catch {
+      toast.error('Erro na sincronização')
     } finally {
-      setIsSending(false)
+      setSyncing(false)
     }
   }
 
-  // Lista ordenada por última mensagem (mais recente primeiro)
-  const conversations = useMemo(() => {
-    const sorted = [...contacts].sort((a, b) => {
-      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
-      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
-      return tb - ta
-    })
-    if (!search.trim()) return sorted
-    const q = search.toLowerCase()
-    return sorted.filter(
-      (c) =>
-        c.name?.toLowerCase().includes(q) ||
-        c.whatsapp_id?.includes(q) ||
-        c.push_name?.toLowerCase().includes(q) ||
-        c.phone_number?.includes(q),
-    )
-  }, [contacts, search])
+  const handleSend = async (textToSend?: string) => {
+    const text = (textToSend || inputText).trim()
+    if (!text || !selectedContactId || sending) return
 
-  const formatTime = (dateStr?: string | null) => {
-    if (!dateStr) return ''
-    return format(new Date(dateStr), 'HH:mm')
+    setSending(true)
+    try {
+      await sendMessage(selectedContactId, text)
+      if (!textToSend) setInputText('')
+      toast.success('Mensagem enviada')
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao enviar mensagem')
+    } finally {
+      setSending(false)
+    }
   }
 
-  const formatDay = (dateStr: string) => {
-    const date = new Date(dateStr)
-    if (isToday(date)) return t('today')
-    if (isYesterday(date)) return t('yesterday')
-    return format(date, 'dd/MM/yyyy', { locale: dateLocale })
+  const handleToggleFlag = async (messageId: string, currentFlag?: boolean) => {
+    try {
+      await toggleMessageFlag(messageId, !currentFlag)
+      toast.success(
+        !currentFlag ? 'Mensagem marcada para acompanhar 📌' : 'Marcação para acompanhar removida',
+      )
+    } catch {
+      toast.error('Erro ao atualizar marcação')
+    }
   }
 
-  const formatListTime = (dateStr?: string | null) => {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    if (isToday(date)) return format(date, 'HH:mm')
-    if (isYesterday(date)) return t('yesterday')
-    return format(date, 'dd/MM/yyyy', { locale: dateLocale })
-  }
+  // Filtragem
+  const filteredContacts = contacts.filter((c) => {
+    const matchesSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) || c.phone_number.includes(search)
+    if (!matchesSearch) return false
 
-  // Agrupa mensagens por dia
-  const grouped: { [key: string]: Message[] } = {}
-  messages.forEach((msg) => {
-    const dateKey = formatDay(msg.timestamp || msg.created)
-    if (!grouped[dateKey]) grouped[dateKey] = []
-    grouped[dateKey].push(msg)
+    if (filter === 'pending') return c.status === 'pending'
+    return true
   })
 
-  const initial = (c: Contact) =>
-    c.name?.charAt(0)?.toUpperCase() || c.push_name?.charAt(0)?.toUpperCase() || '#'
-  const displayName = (c: Contact) => c.name || c.push_name || t('unknown')
+  // Se filtro 'flagged' estiver ativo nas mensagens do contato atual
+  const displayedMessages = filter === 'flagged' ? messages.filter((m) => m.flagged) : messages
+
+  const hasAnyFlaggedInCurrent = messages.some((m) => m.flagged)
 
   return (
-    <div className="flex h-[calc(100vh-160px)] md:h-[calc(100vh-80px)] w-full overflow-hidden bg-background animate-in fade-in duration-500 ease-apple">
-      {/* Coluna esquerda — lista de pacientes */}
-      <aside
-        className={cn(
-          'flex flex-col w-full md:w-[360px] lg:w-[400px] shrink-0 border-r border-border bg-card',
-          mobileShowChat && id ? 'hidden md:flex' : 'flex',
-        )}
-      >
-        <div className="px-5 pt-5 pb-3 border-b border-border/60">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-xl font-bold tracking-tight text-foreground">
-              {t('conversas_title')}
-            </h2>
-            {syncing && (
-              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Sincronizando
-              </span>
-            )}
-          </div>
-          <p className="text-[13px] font-medium text-muted-foreground mt-0.5">
-            {t('conversas_desc')}
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-4 md:p-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 shrink-0">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <MessageSquare className="h-6 w-6 text-primary" />
+            Conversas do WhatsApp
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Interações e suporte nutricional gerenciados pela Yasa AI e pelo Dr. Caio.
           </p>
         </div>
 
-        <div className="px-4 py-3 border-b border-border/60">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('search_conversations')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-11 rounded-full bg-muted/60 border-transparent focus-visible:bg-background focus-visible:border-border text-[14px] font-medium"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {loadingContacts ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground/40" />
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="bg-muted w-16 h-16 rounded-full flex items-center justify-center mb-4">
-                <MessageCircle className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-semibold text-muted-foreground">{t('no_patients_yet')}</p>
-            </div>
+        <div className="flex items-center gap-2">
+          {integration?.status === 'CONNECTED' ? (
+            <Badge
+              variant="outline"
+              className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs py-1 px-3"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
+              WhatsApp Conectado ({integration.instance_name || 'Yasa'})
+            </Badge>
           ) : (
-            conversations.map((c) => {
-              const isActive = c.id === id
-              const lastTime = c.last_message_at || c.updated || c.created
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => handleSelect(c)}
-                  className={cn(
-                    'flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors border-l-4',
-                    isActive
-                      ? 'bg-primary/10 border-primary'
-                      : 'border-transparent hover:bg-muted/60',
-                  )}
-                >
-                  <Avatar className="h-12 w-12 shrink-0 border border-border/60">
-                    <AvatarImage src={c.profile_picture_url || c.avatar_url || ''} />
-                    <AvatarFallback className="bg-muted text-foreground font-bold text-base">
-                      {initial(c)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-[15px] tracking-tight text-foreground truncate">
-                        {displayName(c)}
-                      </span>
-                      <span className="text-[11px] font-semibold text-muted-foreground shrink-0">
-                        {formatListTime(lastTime)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <span className="text-[13px] font-medium text-muted-foreground truncate">
-                        {c.last_message_from_me ? t('last_message_you') : ''}
-                        {c.last_message || t('no_last_message')}
-                      </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/app/onboarding')}
+              className="text-xs rounded-full border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+            >
+              <QrCode className="h-3.5 w-3.5 mr-1.5" />
+              Conectar WhatsApp
+            </Button>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleManualSync}
+            disabled={syncing}
+            className="rounded-full text-xs font-semibold shadow-2xs hover:bg-muted"
+            title="Sincronizar mensagens agora"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncing ? 'animate-spin' : ''}`} />
+            Sincronizar
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Chat Grid */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 bg-card rounded-2xl border border-border shadow-elevation overflow-hidden">
+        {/* Left column: Contact list (4 cols) */}
+        <div className="md:col-span-4 lg:col-span-4 border-r border-border flex flex-col h-full bg-muted/10">
+          {/* Search & Filter Header */}
+          <div className="p-3 border-b border-border space-y-2.5">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou telefone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 text-xs rounded-xl bg-background"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant={filter === 'all' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setFilter('all')}
+                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold"
+              >
+                Todas ({contacts.length})
+              </Button>
+              <Button
+                variant={filter === 'pending' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setFilter('pending')}
+                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold text-amber-700 dark:text-amber-400"
+              >
+                Aguardando ({contacts.filter((c) => c.status === 'pending').length})
+              </Button>
+              <Button
+                variant={filter === 'flagged' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setFilter('flagged')}
+                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold text-purple-700 dark:text-purple-400"
+                title="Mensagens marcadas para acompanhar"
+              >
+                <Bookmark className="h-3 w-3 mr-1" />
+                Acompanhar
+              </Button>
+            </div>
+          </div>
+
+          {/* Contact List Scroll */}
+          <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+            {loadingContacts ? (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
+                Carregando conversas...
+              </div>
+            ) : filteredContacts.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                <MessageSquare className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                Nenhuma conversa encontrada.
+              </div>
+            ) : (
+              filteredContacts.map((c) => {
+                const isSelected = c.id === selectedContactId
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedContactId(c.id)}
+                    className={`w-full text-left p-3.5 transition-colors flex items-start gap-3 ${
+                      isSelected ? 'bg-primary/10 border-l-4 border-l-primary' : 'hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="relative shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-2xs">
+                        {c.name ? c.name.charAt(0).toUpperCase() : <User className="h-5 w-5" />}
+                      </div>
                       {c.status === 'pending' && (
-                        <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                          {t('status_pending')}
-                        </span>
+                        <span className="absolute -top-0.5 -right-0.5 h-3 w-3 bg-amber-500 rounded-full ring-2 ring-background animate-pulse" />
                       )}
                     </div>
-                  </div>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </aside>
 
-      {/* Coluna direita — conversa / estado vazio */}
-      <section
-        className={cn(
-          'flex-1 flex flex-col bg-[#e5ddd5]/40 dark:bg-background/40 min-w-0',
-          mobileShowChat && id ? 'flex' : 'hidden md:flex',
-        )}
-      >
-        {!id || !contact ? (
-          // Estado vazio — nenhum paciente selecionado
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 p-12 text-center">
-            <div className="bg-muted/60 w-24 h-24 rounded-full flex items-center justify-center">
-              <MessageCircle className="h-11 w-11 text-muted-foreground/60" />
-            </div>
-            <h3 className="text-lg font-bold tracking-tight text-foreground">
-              {t('select_patient')}
-            </h3>
-            <p className="text-sm font-medium text-muted-foreground max-w-sm">
-              {t('select_patient_desc')}
-            </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span
+                          className={`text-xs truncate ${
+                            isSelected ? 'font-bold text-primary' : 'font-semibold text-foreground'
+                          }`}
+                        >
+                          {c.name || c.phone_number}
+                        </span>
+                        {c.last_message_at && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {format(new Date(c.last_message_at), 'HH:mm', { locale: ptBR })}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {c.last_message_from_me ? 'Você: ' : ''}
+                        {c.last_message || 'Sem mensagens recentes'}
+                      </p>
+
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {c.status === 'pending' && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] h-4 px-1 bg-amber-50 text-amber-700 border-amber-200"
+                          >
+                            Pendente
+                          </Badge>
+                        )}
+                        {c.patient_id && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] h-4 px-1 text-muted-foreground"
+                          >
+                            Paciente
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
+            )}
           </div>
-        ) : (
-          <>
-            {/* Header do chat */}
-            <header className="flex items-center gap-3 px-4 py-3 bg-card border-b border-border shrink-0 z-10">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full shrink-0 -ml-1 md:hidden hover:bg-muted"
-                onClick={handleBack}
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <Avatar className="h-10 w-10 shrink-0 border border-border/60">
-                <AvatarImage src={contact.profile_picture_url || contact.avatar_url || ''} />
-                <AvatarFallback className="bg-muted text-foreground font-bold">
-                  {initial(contact)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <span className="block font-bold text-[15px] tracking-tight text-foreground truncate">
-                  {displayName(contact)}
-                </span>
-                <span className="block text-[12px] font-semibold text-primary">{t('online')}</span>
-              </div>
-              <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20 shrink-0">
-                <Sparkles className="h-4 w-4" />
-                <span className="text-[11px] font-bold hidden sm:inline">{t('yasa_label')}</span>
-              </div>
-            </header>
+        </div>
 
-            {/* Mensagens */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 space-y-4">
-              {loadingContact || loadingMessages ? (
-                <div className="flex justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex justify-center py-16">
-                  <p className="text-sm text-muted-foreground font-medium bg-card/80 px-4 py-2 rounded-full shadow-sm">
-                    {t('message_empty')}
-                  </p>
-                </div>
-              ) : (
-                Object.entries(grouped).map(([day, msgs]) => (
-                  <div key={day} className="space-y-2.5">
-                    <div className="flex justify-center my-3">
-                      <span className="bg-card border border-border/60 text-muted-foreground text-[11px] font-bold px-3 py-1 rounded-full shadow-sm">
-                        {day}
+        {/* Right column: Active Chat Area (8 cols) */}
+        <div className="md:col-span-8 lg:col-span-8 flex flex-col h-full bg-background">
+          {selectedContact ? (
+            <>
+              {/* Active Contact Header */}
+              <div className="p-3.5 border-b border-border flex items-center justify-between bg-muted/20">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-2xs">
+                    {selectedContact.name ? (
+                      selectedContact.name.charAt(0).toUpperCase()
+                    ) : (
+                      <User className="h-5 w-5" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                      {selectedContact.name || selectedContact.phone_number}
+                      {selectedContact.patient_id && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                        >
+                          Paciente Cadastrado
+                        </Badge>
+                      )}
+                    </h3>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {selectedContact.phone_number}
                       </span>
                     </div>
-                    {msgs.map((msg, idx) => {
-                      const isMe = msg.role !== 'user'
-                      const isYasa = msg.role === 'assistant'
-                      const prev = msgs[idx - 1]
-                      const firstOfGroup = !prev || prev.role !== msg.role
-                      return (
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {selectedContact.patient_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        navigate(`/app/pacientes/${selectedContact.patient_id}/editar`)
+                      }
+                      className="rounded-full text-xs font-semibold h-8"
+                    >
+                      Abrir Ficha
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Messages Flow */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-muted/5">
+                {loadingMessages ? (
+                  <div className="p-8 text-center text-xs text-muted-foreground">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
+                    Carregando mensagens...
+                  </div>
+                ) : displayedMessages.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-muted-foreground">
+                    {filter === 'flagged' ? (
+                      <p>Nenhuma mensagem marcada para acompanhar nesta conversa.</p>
+                    ) : (
+                      <p>Nenhuma mensagem registrada nesta conversa.</p>
+                    )}
+                  </div>
+                ) : (
+                  displayedMessages.map((msg) => {
+                    const isAssistant = msg.role === 'assistant'
+                    const isUser = msg.role === 'user'
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`group flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
+                      >
                         <div
-                          key={msg.id}
-                          className={cn('flex w-full', isMe ? 'justify-end' : 'justify-start')}
+                          className={`relative max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-xs text-xs leading-relaxed ${
+                            isUser
+                              ? 'bg-muted text-foreground rounded-tl-xs'
+                              : 'bg-primary text-primary-foreground rounded-tr-xs'
+                          } ${msg.flagged ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
                         >
-                          <div
-                            className={cn(
-                              'max-w-[80%] sm:max-w-[65%] px-3 py-2 flex flex-col shadow-sm text-[14px] leading-relaxed break-words whitespace-pre-wrap',
-                              isMe
-                                ? 'bg-[#dcf8c6] dark:bg-[#075E54] dark:text-white text-foreground rounded-2xl rounded-tr-sm'
-                                : 'bg-card border border-border/60 text-foreground rounded-2xl rounded-tl-sm',
-                              !firstOfGroup && (isMe ? 'rounded-tr-2xl' : 'rounded-tl-2xl'),
-                            )}
-                          >
-                            {isYasa && firstOfGroup && (
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-primary dark:text-primary-foreground/80 mb-0.5 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> {t('yasa_label')}
-                              </span>
-                            )}
-                            <span>{msg.content}</span>
-                            <span
-                              className={cn(
-                                'text-[10px] mt-1 self-end flex items-center gap-1 font-semibold opacity-70',
-                                isMe
-                                  ? 'text-foreground/70 dark:text-white/70'
-                                  : 'text-muted-foreground',
+                          <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 mb-1 pb-1 border-b border-current/15">
+                            <span className="flex items-center gap-1 font-bold">
+                              {isAssistant ? (
+                                <>
+                                  <Sparkles className="h-2.5 w-2.5" /> Yasa / Nutricionista
+                                </>
+                              ) : (
+                                <>
+                                  <User className="h-2.5 w-2.5" /> Paciente
+                                </>
                               )}
-                            >
-                              {formatTime(msg.timestamp || msg.created)}
-                              {isMe &&
-                                (isYasa ? (
-                                  <CheckCheck className="h-3 w-3" />
-                                ) : (
-                                  <Check className="h-3 w-3" />
-                                ))}
+                            </span>
+                            <span>
+                              {msg.timestamp
+                                ? format(new Date(msg.timestamp), 'HH:mm', { locale: ptBR })
+                                : ''}
                             </span>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
 
-            {/* Campo de resposta */}
-            <div className="px-3 sm:px-6 py-3 bg-card border-t border-border shrink-0">
-              <form onSubmit={handleSend} className="flex gap-2 items-end">
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                          {/* Pin / Flag button on hover */}
+                          <div className="absolute -top-2.5 -right-2.5 hidden group-hover:flex items-center">
+                            <button
+                              onClick={() => handleToggleFlag(msg.id, msg.flagged)}
+                              className={`p-1 rounded-full shadow-md transition-colors ${
+                                msg.flagged
+                                  ? 'bg-purple-600 text-white'
+                                  : 'bg-background text-foreground hover:bg-purple-100 dark:hover:bg-purple-950'
+                              }`}
+                              title={
+                                msg.flagged ? 'Desmarcar acompanhamento' : 'Marcar para acompanhar'
+                              }
+                            >
+                              {msg.flagged ? (
+                                <BookmarkCheck className="h-3.5 w-3.5" />
+                              ) : (
+                                <Bookmark className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {msg.flagged && (
+                          <span className="text-[10px] text-purple-600 font-bold mt-0.5 flex items-center gap-1 px-1">
+                            <Bookmark className="h-2.5 w-2.5 fill-purple-600" />
+                            Acompanhar
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Quick Replies Chips */}
+              <div className="px-3 pt-2 pb-1 border-t border-border/60 bg-muted/20">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1 shrink-0 mr-1">
+                    <Zap className="h-3 w-3 text-amber-500" />
+                    Respostas Rápidas:
+                  </span>
+                  {QUICK_REPLIES.map((reply, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setInputText(reply)}
+                      className="shrink-0 text-[11px] font-medium bg-background hover:bg-muted text-foreground border border-border/80 px-2.5 py-1 rounded-full transition-colors truncate max-w-[240px] shadow-2xs"
+                      title={reply}
+                    >
+                      {reply}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat Input Footer */}
+              <div className="p-3 border-t border-border bg-background flex items-center gap-2">
                 <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={t('type_message')}
-                  className="flex-1 bg-muted/60 border-transparent rounded-full h-12 px-5 text-[14px] font-medium focus-visible:bg-background focus-visible:border-border"
+                  placeholder="Digite sua mensagem ou escolha uma resposta rápida..."
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend()
+                    }
+                  }}
+                  className="flex-1 rounded-xl h-10 text-xs"
                 />
                 <Button
-                  type="submit"
-                  disabled={isSending || !newMessage.trim()}
-                  size="icon"
-                  className="h-12 w-12 rounded-full shrink-0 shadow-subtle"
-                  title={t('send_message')}
+                  onClick={() => handleSend()}
+                  disabled={sending || !inputText.trim()}
+                  className="rounded-xl h-10 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold flex items-center gap-1.5 shadow-subtle shrink-0"
                 >
-                  {isSending ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Send className="h-5 w-5" />
-                  )}
+                  <Send className="h-4 w-4" />
+                  <span>Enviar</span>
                 </Button>
-              </form>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <MessageSquare className="h-12 w-12 text-muted-foreground/30 mb-3" />
+              <h3 className="text-base font-bold text-foreground">Nenhuma conversa selecionada</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Selecione um paciente na lista lateral para visualizar o histórico de mensagens e
+                responder pelo WhatsApp.
+              </p>
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
