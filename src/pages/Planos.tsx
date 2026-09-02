@@ -5,7 +5,12 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { getSubscriptionPlans } from '@/services/patients'
 import { Check, X, ExternalLink, RefreshCw, Zap } from 'lucide-react'
-import { resolveCheckoutUrl, SubscriptionPlan, FALLBACK_PLANS } from '@/lib/infinitepay'
+import {
+  resolveCheckoutUrl,
+  SubscriptionPlan,
+  FALLBACK_PLANS,
+  createMercadoPagoLinks,
+} from '@/lib/mercadopago'
 
 export default function Planos() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>(FALLBACK_PLANS)
@@ -34,11 +39,20 @@ export default function Planos() {
   const handleSyncPlans = async () => {
     setGenerating(true)
     try {
+      const res = await createMercadoPagoLinks()
       await fetchPlans()
-      toast({
-        title: 'Planos atualizados',
-        description: 'Os planos e links da InfinitePay foram sincronizados.',
-      })
+      if (res.success) {
+        toast({
+          title: 'Links gerados com sucesso',
+          description: 'Os links do Checkout Pro do Mercado Pago foram gerados e sincronizados.',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Aviso',
+          description: res.message || 'Não foi possível gerar novos links no Mercado Pago.',
+        })
+      }
     } catch {
       toast({
         variant: 'destructive',
@@ -95,17 +109,17 @@ export default function Planos() {
             Planos de Assinatura
           </h1>
           <p className="text-sm text-muted-foreground">
-            Gerencie e visualize os planos disponíveis e seus links diretos da InfinitePay
+            Gerencie e visualize os planos disponíveis e seus links diretos do Mercado Pago
+            (Checkout Pro)
           </p>
         </div>
         <Button
           onClick={handleSyncPlans}
           disabled={generating || loading}
-          variant="outline"
-          className="gap-2"
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
         >
           <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-          Sincronizar Planos
+          {generating ? 'Gerando Links...' : 'Gerar / Atualizar Links Mercado Pago'}
         </Button>
       </div>
 
@@ -202,7 +216,7 @@ export default function Planos() {
                     className="block w-full"
                   >
                     <Button className={`w-full gap-2 ${theme.button}`}>
-                      <span>Link InfinitePay</span>
+                      <span>Link Mercado Pago</span>
                       <ExternalLink className="w-4 h-4" />
                     </Button>
                   </a>

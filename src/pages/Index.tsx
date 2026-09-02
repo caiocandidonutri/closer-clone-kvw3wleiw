@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { getPublicSubscriptionPlans, getPublicStats, PublicStats } from '@/services/patients'
-import { SubscriptionPlan, FALLBACK_PLANS, INFINITEPAY_LINKS } from '@/lib/infinitepay'
+import { SubscriptionPlan, FALLBACK_PLANS, resolveCheckoutUrl } from '@/lib/mercadopago'
 
 // ── Comparison Table Matrix ──
 interface FeatureRow {
@@ -155,9 +155,11 @@ export default function Index() {
 
   const getPlanLink = (slug: string) => {
     if (slug === 'free_trial') return '/auth'
-    if (slug === 'weekly') return INFINITEPAY_LINKS.weekly
-    if (slug === 'monthly') return INFINITEPAY_LINKS.monthly
-    if (slug === 'quarterly') return INFINITEPAY_LINKS.quarterly
+    const found = plans.find((p) => p.slug === slug)
+    if (found) {
+      const url = resolveCheckoutUrl(found)
+      if (url) return url
+    }
     return '/auth'
   }
 
@@ -194,7 +196,7 @@ export default function Index() {
     },
     {
       q: 'Como é feito o pagamento?',
-      a: 'O pagamento é processado com total segurança via InfinitePay, aceitando Pix ou Cartão de Crédito. A liberação do seu WhatsApp com a Yasa é instantânea após a confirmação.',
+      a: 'O pagamento é processado com total segurança via Mercado Pago (Checkout Pro), aceitando Pix, Cartão de Crédito ou boleto bancário. A liberação do seu WhatsApp com a Yasa é instantânea após a confirmação.',
     },
     {
       q: 'A Yasa substitui a consulta médica?',
@@ -787,8 +789,8 @@ export default function Index() {
                   </Button>
                 </Link>
                 <a
-                  href={INFINITEPAY_LINKS.weekly}
-                  target="_blank"
+                  href={getPlanLink('weekly')}
+                  target={getPlanLink('weekly').startsWith('http') ? '_blank' : undefined}
                   rel="noopener noreferrer"
                   className="flex-1 sm:flex-none"
                 >

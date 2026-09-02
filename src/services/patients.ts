@@ -1,5 +1,5 @@
 import pb from '@/lib/pocketbase/client'
-import { FALLBACK_PLANS, SubscriptionPlan as IPPlan, INFINITEPAY_LINKS } from '@/lib/infinitepay'
+import { FALLBACK_PLANS, SubscriptionPlan as MPPlan } from '@/lib/mercadopago'
 import { Patient, SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 
 export type { Patient, SubscriptionPlan }
@@ -33,8 +33,9 @@ export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
         : typeof r.benefits === 'string'
           ? JSON.parse(r.benefits || '[]')
           : [],
-      infinitepay_link: r.infinitepay_link || '',
-      infinitepay_order_nsu: r.infinitepay_order_nsu || '',
+      mercadopago_init_point: r.mercadopago_init_point || '',
+      mercadopago_preference_id: r.mercadopago_preference_id || '',
+      mercadopago_external_reference: r.mercadopago_external_reference || '',
       is_active: r.is_active !== false,
       created: r.created,
       updated: r.updated,

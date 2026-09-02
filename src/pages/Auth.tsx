@@ -27,7 +27,7 @@ import {
 import closerLogo from '@/assets/closer_logo-fcd09.png'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { registerPatient, listPlans } from '@/services/patients'
-import { resolveCheckoutUrl, INFINITEPAY_FALLBACK_LINKS } from '@/lib/infinitepay'
+import { resolveCheckoutUrl } from '@/lib/mercadopago'
 import type { SubscriptionPlan, SubscriptionPlanSlug } from '@/lib/types'
 import { toast } from 'sonner'
 
@@ -228,7 +228,7 @@ export default function Auth() {
         toast.success('Cadastro realizado com sucesso! Verifique seu WhatsApp.')
       } else {
         // Plano Pago: Primeiro salva os dados do paciente com status trial/pendente
-        // para garantir o registro do objetivo e contato, depois redireciona para a InfinitePay
+        // para garantir o registro do objetivo e contato, depois redireciona para o Mercado Pago
         try {
           await registerPatient({
             name: patientName.trim(),
@@ -242,19 +242,16 @@ export default function Auth() {
           console.warn('[Auth] warning saving pre-checkout patient:', err)
         }
 
-        // Localiza a URL de checkout (com webhook) ou fallback
+        // Localiza a URL de checkout do Mercado Pago
         const matchingDbPlan = dbPlans.find((p) => p.slug === selectedPlan)
         let checkoutUrl = ''
         if (matchingDbPlan) {
           checkoutUrl = resolveCheckoutUrl(matchingDbPlan)
         }
-        if (!checkoutUrl) {
-          checkoutUrl = INFINITEPAY_FALLBACK_LINKS[selectedPlan] || ''
-        }
 
         if (checkoutUrl) {
-          toast.info('Redirecionando para o pagamento seguro na InfinitePay...')
-          // Redireciona o paciente para a página de checkout
+          toast.info('Redirecionando para o pagamento seguro no Mercado Pago...')
+          // Redireciona o paciente para o Checkout Pro do Mercado Pago
           window.location.href = checkoutUrl
         } else {
           toast.success('Cadastro realizado! O link de pagamento será enviado no seu WhatsApp.')
@@ -747,7 +744,7 @@ export default function Auth() {
                       )}
                     </Button>
                     <p className="text-xs text-muted-foreground mt-3 text-center">
-                      🔒 Pagamento criptografado via InfinitePay · Sem fidelidade · Acesso imediato
+                      🔒 Pagamento criptografado via Mercado Pago · Sem fidelidade · Acesso imediato
                       no WhatsApp
                     </p>
                   </div>

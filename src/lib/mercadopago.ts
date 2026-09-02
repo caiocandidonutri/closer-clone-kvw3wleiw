@@ -9,8 +9,9 @@ export interface SubscriptionPlan {
   limit_type: 'daily' | 'total'
   has_all_features: boolean
   benefits: string[]
-  infinitepay_link?: string
-  infinitepay_order_nsu?: string
+  mercadopago_init_point?: string
+  mercadopago_preference_id?: string
+  mercadopago_external_reference?: string
   is_active: boolean
   created: string
   updated: string
@@ -55,8 +56,7 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
       '❌ Sem lista de compras',
       '❌ Sem geladeira inteligente',
     ],
-    infinitepay_link: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
-    infinitepay_order_nsu: 'nutri-weekly',
+    mercadopago_external_reference: 'nutri-weekly',
     is_active: true,
     created: '',
     updated: '',
@@ -78,8 +78,7 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
       'Lista de compras inteligente',
       'Geladeira inteligente',
     ],
-    infinitepay_link: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
-    infinitepay_order_nsu: 'nutri-monthly',
+    mercadopago_external_reference: 'nutri-monthly',
     is_active: true,
     created: '',
     updated: '',
@@ -100,46 +99,42 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
       'Prioridade no WhatsApp',
       'Relatórios semanais',
     ],
-    infinitepay_link: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
-    infinitepay_order_nsu: 'nutri-quarterly',
+    mercadopago_external_reference: 'nutri-quarterly',
     is_active: true,
     created: '',
     updated: '',
   },
 ]
 
-export const INFINITEPAY_LINKS = {
-  weekly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/XfCDjEC9ln',
-  monthly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/G21rZgmQ0b',
-  quarterly: 'https://invoice.infinitepay.io/plans/caio_candido_mac/fGRzAl740t',
-} as const
-
-export const INFINITEPAY_FALLBACK_LINKS = INFINITEPAY_LINKS
-
-export async function createInfinitePayLinks(): Promise<{ success: boolean; message?: string }> {
+export async function createMercadoPagoLinks(): Promise<{
+  success: boolean
+  message?: string
+  results?: Array<{ slug: string; ok: boolean; init_point?: string; error?: string }>
+}> {
   try {
     const pb = (await import('@/lib/pocketbase/client')).default
-    const res = await pb.send<{ success: boolean; message?: string }>(
-      '/backend/v1/infinitepay/create-links',
-      {
-        method: 'POST',
-      },
-    )
+    const res = await pb.send<{
+      success: boolean
+      message?: string
+      results?: Array<{ slug: string; ok: boolean; init_point?: string; error?: string }>
+    }>('/backend/v1/mercadopago/create-links', {
+      method: 'POST',
+    })
     return res
   } catch (err: any) {
     return {
       success: false,
-      message: err?.data?.message || err?.message || 'Falha ao gerar os links da InfinitePay',
+      message:
+        err?.data?.message ||
+        err?.message ||
+        'Falha ao gerar os links de pagamento do Mercado Pago',
     }
   }
 }
 
 export function resolveCheckoutUrl(
-  plan: SubscriptionPlan | { slug: string; infinitepay_link?: string },
-) {
-  if (plan.infinitepay_link) return plan.infinitepay_link
-  if (plan.slug === 'weekly') return INFINITEPAY_LINKS.weekly
-  if (plan.slug === 'monthly') return INFINITEPAY_LINKS.monthly
-  if (plan.slug === 'quarterly') return INFINITEPAY_LINKS.quarterly
+  plan: SubscriptionPlan | { slug: string; mercadopago_init_point?: string },
+): string {
+  if (plan.mercadopago_init_point) return plan.mercadopago_init_point
   return ''
 }

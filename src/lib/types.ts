@@ -126,8 +126,9 @@ export interface SubscriptionPlan {
   limit_type: 'daily' | 'total'
   has_all_features: boolean
   benefits: string[]
-  infinitepay_link?: string
-  infinitepay_order_nsu?: string
+  mercadopago_init_point?: string
+  mercadopago_preference_id?: string
+  mercadopago_external_reference?: string
   is_active: boolean
   created: string
   updated: string
@@ -160,7 +161,8 @@ export interface Patient {
   avatar_url?: string
   contact?: string
   invited_by?: string
-  infinitepay_transaction_nsu?: string
+  mercadopago_payment_id?: string
+  mercadopago_preference_id?: string
   // Triage fields
   weight_kg?: number | null
   height_cm?: number | null
