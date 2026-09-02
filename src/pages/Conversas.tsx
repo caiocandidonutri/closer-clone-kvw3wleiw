@@ -36,10 +36,11 @@ const QUICK_REPLIES = [
   'Parabéns pela dedicação! Manter a constância é o segredo do sucesso ✨',
 ]
 
-export function Conversas() {
+export default function Conversas() {
   const navigate = useNavigate()
-  const { contacts, loading: loadingContacts, reload: reloadContacts } = useContacts()
-  const { integration, loading: loadingIntegration } = useIntegration()
+  const { contacts, loading: loadingContacts, refresh: reloadContacts } = useContacts()
+  const { integrations, loading: loadingIntegration } = useIntegration()
+  const integration = integrations && integrations.length > 0 ? integrations[0] : null
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
   const { messages, loading: loadingMessages } = useMessages(selectedContactId)
   const [inputText, setInputText] = useState('')
@@ -85,9 +86,9 @@ export function Conversas() {
       const res = await cleanupAndSyncWhatsapp()
       if (res.success) {
         toast.success(
-          `Sincronização concluída: ${res.synced_contacts || 0} contatos e ${res.synced_messages || 0} mensagens atualizadas!`,
+          `Sincronização concluída: ${(res as any).contacts_saved || (res as any).synced_contacts || 0} contatos e ${(res as any).messages_saved || (res as any).synced_messages || 0} mensagens atualizadas!`,
         )
-        reloadContacts()
+        await reloadContacts()
       } else {
         toast.error('Não foi possível sincronizar o WhatsApp')
       }

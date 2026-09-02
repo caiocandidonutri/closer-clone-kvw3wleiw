@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '@/hooks/use-language'
 import { useRealtime } from '@/hooks/use-realtime'
-import { listPatients, releaseMessagesForPatient } from '@/services/patients'
+import { listPatients } from '@/services/patients'
 import { getConversations } from '@/services/contacts'
 import { getNotifications } from '@/services/notifications'
 import type { Patient, Contact, AppNotification } from '@/lib/types'
@@ -31,11 +31,10 @@ import { RevenueTab } from '@/components/dashboard/RevenueTab'
 import { toast } from 'sonner'
 import pb from '@/lib/pocketbase/client'
 
-export function Dashboard() {
-  const { t } = useLanguage()
+export default function Dashboard() {
   const navigate = useNavigate()
   const [patients, setPatients] = useState<Patient[]>([])
-  const [contacts, setContacts] = useState<Contact[]>([])
+  const [contacts, setContacts] = useState<any[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [releasingId, setReleasingId] = useState<string | null>(null)
@@ -69,8 +68,14 @@ export function Dashboard() {
   const handleQuickRelease = async (patient: Patient) => {
     setReleasingId(patient.id)
     try {
-      const res = await releaseMessagesForPatient(patient.id, 5)
-      if (res.success) {
+      const res = await pb.send<{ success: boolean; message_count_limit: number }>(
+        '/backend/v1/patients/release-messages',
+        {
+          method: 'POST',
+          body: { patient_id: patient.id, amount: 5 },
+        },
+      )
+      if (res && res.success) {
         toast.success(`+5 mensagens liberadas para ${patient.name}! 💚`)
         await loadData()
       } else {
@@ -152,7 +157,7 @@ export function Dashboard() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
-              {t('dashboard.welcome') || 'Painel Nutri Responde'}
+              Painel Nutri Responde
             </h1>
             <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200">
               <Sparkles className="h-3 w-3 mr-1 text-emerald-600" />
