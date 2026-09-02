@@ -222,18 +222,20 @@ function PatientRow({
   const reachedLimit = hasLimit && used >= limit
 
   return (
-    <div className="flex items-center justify-between gap-3 py-3.5 px-3 -mx-1 rounded-2xl hover:bg-muted transition-all duration-300 group">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 px-3 rounded-2xl hover:bg-muted transition-all duration-300 min-w-0 border border-transparent hover:border-border/60">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
           {patient.name?.charAt(0)?.toUpperCase() || '#'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-bold text-[15px] tracking-tight text-foreground truncate">
+          <p className="font-bold text-sm sm:text-[15px] tracking-tight text-foreground truncate">
             {patient.name}
           </p>
-          <div className="flex items-center gap-2 text-[12px] text-muted-foreground font-medium">
-            <Phone className="h-3 w-3" />
-            <span className="truncate">{patient.phone}</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium flex-wrap">
+            <span className="flex items-center gap-1">
+              <Phone className="h-3 w-3 shrink-0" />
+              <span>{patient.phone}</span>
+            </span>
             {lastInteraction && (
               <>
                 <span>·</span>
@@ -248,8 +250,8 @@ function PatientRow({
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <Badge variant="outline" className="text-[11px] px-2 py-0.5 hidden sm:inline-flex">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap justify-end">
+        <Badge variant="outline" className="text-[11px] px-2 py-0.5">
           {PLAN_LABELS[patient.subscription_plan] || patient.subscription_plan}
         </Badge>
         {patient.triaged ? (
@@ -291,26 +293,18 @@ function PatientRow({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 px-2.5 text-xs text-primary border-primary/20 hover:bg-primary/10 hidden sm:inline-flex items-center gap-1 rounded-full"
+          className="h-8 px-2.5 text-xs text-primary border-primary/20 hover:bg-primary/10 inline-flex items-center gap-1 rounded-full"
           onClick={onRelease}
           title="Liberar +5 mensagens"
         >
           <Unlock className="h-3.5 w-3.5" />
-          <span>Liberar +5</span>
+          <span className="hidden sm:inline">Liberar +5</span>
+          <span className="sm:hidden">+5</span>
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-8 w-8 sm:hidden text-primary hover:bg-primary/10"
-          onClick={onRelease}
-          title="Liberar +5 mensagens"
-        >
-          <Unlock className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+          className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
           onClick={() => navigate(`/app/pacientes/${patient.id}`)}
           title="Editar paciente"
         >
@@ -319,7 +313,7 @@ function PatientRow({
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+          className="rounded-full h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
           onClick={onRemove}
           title="Excluir paciente"
         >

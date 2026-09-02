@@ -74,33 +74,33 @@ export function RevenueTab() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header with quick actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <DollarSign className="h-6 w-6 text-primary" />
-            Métricas de Receita e Assinaturas
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+        <div className="min-w-0">
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2 truncate">
+            <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+            <span className="truncate">Métricas de Receita e Assinaturas</span>
           </h3>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Acompanhe o faturamento mensal recorrente (MRR), planos ativos e alertas de vencimento.
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           <Button
             variant="outline"
             size="sm"
             onClick={loadData}
             disabled={loading}
-            className="rounded-full shadow-subtle hover:bg-muted"
+            className="rounded-full shadow-subtle hover:bg-muted text-xs"
           >
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
           <Button
             size="sm"
             onClick={() => navigate('/app/planos')}
-            className="rounded-full shadow-subtle bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="rounded-full shadow-subtle bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
           >
-            <Sparkles className="h-4 w-4 mr-1.5" />
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
             Gerenciar Planos
           </Button>
         </div>

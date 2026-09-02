@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useContacts } from '@/hooks/use-contacts'
 import { useMessages } from '@/hooks/use-messages'
 import { useIntegration } from '@/hooks/use-integration'
@@ -12,21 +13,21 @@ import {
   Send,
   MessageSquare,
   Sparkles,
-  Bot,
   User,
   Phone,
   RefreshCw,
   QrCode,
   Bookmark,
   BookmarkCheck,
-  CheckCheck,
   Zap,
+  ArrowLeft,
+  Users,
+  CheckCircle2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import pb from '@/lib/pocketbase/client'
+import { cn } from '@/lib/utils'
 
 const QUICK_REPLIES = [
   'Olá! 💚 Como estão indo suas refeições hoje?',
@@ -38,10 +39,13 @@ const QUICK_REPLIES = [
 
 export default function Conversas() {
   const navigate = useNavigate()
+  const { id: routeContactId } = useParams<{ id: string }>()
   const { contacts, loading: loadingContacts, refresh: reloadContacts } = useContacts()
-  const { integrations, loading: loadingIntegration } = useIntegration()
+  const { integrations } = useIntegration()
   const integration = integrations && integrations.length > 0 ? integrations[0] : null
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(routeContactId || null)
+  // Mobile: whether to show chat panel when a contact is selected
+  const [showMobileChat, setShowMobileChat] = useState<boolean>(Boolean(routeContactId))
   const { messages, loading: loadingMessages } = useMessages(selectedContactId)
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
@@ -50,7 +54,7 @@ export default function Conversas() {
   const [syncing, setSyncing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Otimização de Performance: Sincroniza via backend APENAS 1x por sessão (não em toda re-visita da aba)
+  // Otimização de Performance: Sincroniza via backend APENAS 1x por sessão
   useEffect(() => {
     if (integration?.status === 'CONNECTED') {
       const sessionKey = `whatsapp_synced_${integration.instance_name || 'default'}`
@@ -66,19 +70,36 @@ export default function Conversas() {
     }
   }, [integration?.status, integration?.instance_name, reloadContacts])
 
-  // Scroll to bottom on new messages
+  // Route param sync
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (routeContactId) {
+      setSelectedContactId(routeContactId)
+      setShowMobileChat(true)
+    }
+  }, [routeContactId])
 
-  // Select first contact by default on load
+  // Select first contact by default on desktop if none selected
   useEffect(() => {
     if (!selectedContactId && contacts.length > 0) {
       setSelectedContactId(contacts[0].id)
     }
   }, [contacts, selectedContactId])
 
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
   const selectedContact = contacts.find((c) => c.id === selectedContactId)
+
+  const handleSelectContact = (contactId: string) => {
+    setSelectedContactId(contactId)
+    setShowMobileChat(true)
+  }
+
+  const handleBackToList = () => {
+    setShowMobileChat(false)
+  }
 
   const handleManualSync = async () => {
     setSyncing(true)
@@ -126,10 +147,11 @@ export default function Conversas() {
     }
   }
 
-  // Filtragem
+  // Filtragem dos contatos
   const filteredContacts = contacts.filter((c) => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(search.toLowerCase()) || c.phone_number.includes(search)
+    const nameMatch = (c.name || '').toLowerCase().includes(search.toLowerCase())
+    const phoneMatch = (c.phone_number || '').includes(search)
+    const matchesSearch = nameMatch || phoneMatch
     if (!matchesSearch) return false
 
     if (filter === 'pending') return c.status === 'pending'
@@ -139,30 +161,28 @@ export default function Conversas() {
   // Se filtro 'flagged' estiver ativo nas mensagens do contato atual
   const displayedMessages = filter === 'flagged' ? messages.filter((m) => m.flagged) : messages
 
-  const hasAnyFlaggedInCurrent = messages.some((m) => m.flagged)
-
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] p-4 md:p-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="flex flex-col h-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 animate-in fade-in duration-300">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 shrink-0">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <MessageSquare className="h-6 w-6 text-primary" />
-            Conversas do WhatsApp
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 shrink-0">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2 truncate">
+            <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+            <span>Conversas do WhatsApp</span>
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
             Interações e suporte nutricional gerenciados pela Yasa AI e pelo Dr. Caio.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {integration?.status === 'CONNECTED' ? (
             <Badge
               variant="outline"
-              className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs py-1 px-3"
+              className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs py-1 px-2.5 sm:px-3"
             >
               <span className="h-2 w-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-              WhatsApp Conectado ({integration.instance_name || 'Yasa'})
+              WhatsApp Conectado
             </Badge>
           ) : (
             <Button
@@ -190,12 +210,17 @@ export default function Conversas() {
         </div>
       </div>
 
-      {/* Main Chat Grid */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 bg-card rounded-2xl border border-border shadow-elevation overflow-hidden">
-        {/* Left column: Contact list (4 cols) */}
-        <div className="md:col-span-4 lg:col-span-4 border-r border-border flex flex-col h-full bg-muted/10">
+      {/* Main Chat Container: Desktop split-view, Mobile toggle list/chat */}
+      <div className="flex-1 min-h-[460px] md:min-h-0 relative flex flex-col md:flex-row bg-card rounded-2xl border border-border shadow-elevation overflow-hidden">
+        {/* Left Column: Contact List */}
+        <div
+          className={cn(
+            'flex flex-col h-full bg-muted/10 md:w-80 lg:w-96 md:border-r border-border shrink-0 min-w-0 overflow-hidden',
+            showMobileChat ? 'hidden md:flex' : 'flex w-full',
+          )}
+        >
           {/* Search & Filter Header */}
-          <div className="p-3 border-b border-border space-y-2.5">
+          <div className="p-3 border-b border-border space-y-2.5 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -206,12 +231,12 @@ export default function Conversas() {
               />
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
               <Button
                 variant={filter === 'all' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setFilter('all')}
-                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold"
+                className="h-7 text-xs rounded-lg px-2.5 shrink-0 font-semibold"
               >
                 Todas ({contacts.length})
               </Button>
@@ -219,7 +244,7 @@ export default function Conversas() {
                 variant={filter === 'pending' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setFilter('pending')}
-                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold text-amber-700 dark:text-amber-400"
+                className="h-7 text-xs rounded-lg px-2.5 shrink-0 font-semibold text-amber-700 dark:text-amber-400"
               >
                 Aguardando ({contacts.filter((c) => c.status === 'pending').length})
               </Button>
@@ -227,7 +252,7 @@ export default function Conversas() {
                 variant={filter === 'flagged' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setFilter('flagged')}
-                className="h-7 text-xs rounded-lg px-2.5 flex-1 font-semibold text-purple-700 dark:text-purple-400"
+                className="h-7 text-xs rounded-lg px-2.5 shrink-0 font-semibold text-purple-700 dark:text-purple-400"
                 title="Mensagens marcadas para acompanhar"
               >
                 <Bookmark className="h-3 w-3 mr-1" />
@@ -237,7 +262,7 @@ export default function Conversas() {
           </div>
 
           {/* Contact List Scroll */}
-          <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+          <div className="flex-1 overflow-y-auto divide-y divide-border/60 min-h-0">
             {loadingContacts ? (
               <div className="p-8 text-center text-xs text-muted-foreground">
                 <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
@@ -254,10 +279,11 @@ export default function Conversas() {
                 return (
                   <button
                     key={c.id}
-                    onClick={() => setSelectedContactId(c.id)}
-                    className={`w-full text-left p-3.5 transition-colors flex items-start gap-3 ${
-                      isSelected ? 'bg-primary/10 border-l-4 border-l-primary' : 'hover:bg-muted/40'
-                    }`}
+                    onClick={() => handleSelectContact(c.id)}
+                    className={cn(
+                      'w-full text-left p-3.5 transition-colors flex items-start gap-3 hover:bg-muted/40 cursor-pointer',
+                      isSelected && 'bg-primary/10 border-l-4 border-l-primary',
+                    )}
                   >
                     <div className="relative shrink-0">
                       <div className="h-10 w-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-2xs">
@@ -271,9 +297,10 @@ export default function Conversas() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <span
-                          className={`text-xs truncate ${
-                            isSelected ? 'font-bold text-primary' : 'font-semibold text-foreground'
-                          }`}
+                          className={cn(
+                            'text-xs truncate',
+                            isSelected ? 'font-bold text-primary' : 'font-semibold text-foreground',
+                          )}
                         >
                           {c.name || c.phone_number}
                         </span>
@@ -289,7 +316,7 @@ export default function Conversas() {
                         {c.last_message || 'Sem mensagens recentes'}
                       </p>
 
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {c.status === 'pending' && (
                           <Badge
                             variant="outline"
@@ -315,42 +342,61 @@ export default function Conversas() {
           </div>
         </div>
 
-        {/* Right column: Active Chat Area (8 cols) */}
-        <div className="md:col-span-8 lg:col-span-8 flex flex-col h-full bg-background">
+        {/* Right Column: Active Chat Area */}
+        <div
+          className={cn(
+            'flex-1 flex flex-col h-full bg-background min-w-0 overflow-hidden',
+            !showMobileChat ? 'hidden md:flex' : 'flex w-full',
+          )}
+        >
           {selectedContact ? (
             <>
               {/* Active Contact Header */}
-              <div className="p-3.5 border-b border-border flex items-center justify-between bg-muted/20">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-2xs">
+              <div className="p-3 sm:p-3.5 border-b border-border flex items-center justify-between bg-muted/20 shrink-0 gap-2">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  {/* Mobile Back Button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleBackToList}
+                    className="md:hidden h-8 w-8 rounded-full shrink-0 -ml-1"
+                    title="Voltar para lista de conversas"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-2xs shrink-0">
                     {selectedContact.name ? (
                       selectedContact.name.charAt(0).toUpperCase()
                     ) : (
-                      <User className="h-5 w-5" />
+                      <User className="h-4 w-4 sm:h-5 sm:w-5" />
                     )}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                      {selectedContact.name || selectedContact.phone_number}
+
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5 truncate">
+                      <span className="truncate">
+                        {selectedContact.name || selectedContact.phone_number}
+                      </span>
                       {selectedContact.patient_id && (
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                          className="text-[9px] sm:text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0 hidden sm:inline-flex"
                         >
                           Paciente Cadastrado
                         </Badge>
                       )}
                     </h3>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {selectedContact.phone_number}
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground truncate">
+                      <span className="flex items-center gap-1 truncate">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{selectedContact.phone_number}</span>
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {selectedContact.patient_id && (
                     <Button
                       variant="outline"
@@ -358,7 +404,7 @@ export default function Conversas() {
                       onClick={() =>
                         navigate(`/app/pacientes/${selectedContact.patient_id}/editar`)
                       }
-                      className="rounded-full text-xs font-semibold h-8"
+                      className="rounded-full text-xs font-semibold h-7 sm:h-8 px-2.5 sm:px-3"
                     >
                       Abrir Ficha
                     </Button>
@@ -367,7 +413,7 @@ export default function Conversas() {
               </div>
 
               {/* Messages Flow */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-muted/5">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 bg-muted/5 min-h-0">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-xs text-muted-foreground">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
@@ -392,35 +438,35 @@ export default function Conversas() {
                         className={`group flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
                       >
                         <div
-                          className={`relative max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-xs text-xs leading-relaxed ${
+                          className={`relative max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 sm:px-4 py-2.5 shadow-xs text-xs leading-relaxed ${
                             isUser
                               ? 'bg-muted text-foreground rounded-tl-xs'
                               : 'bg-primary text-primary-foreground rounded-tr-xs'
                           } ${msg.flagged ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
                         >
                           <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 mb-1 pb-1 border-b border-current/15">
-                            <span className="flex items-center gap-1 font-bold">
+                            <span className="flex items-center gap-1 font-bold truncate">
                               {isAssistant ? (
                                 <>
-                                  <Sparkles className="h-2.5 w-2.5" /> Yasa / Nutricionista
+                                  <Sparkles className="h-2.5 w-2.5 shrink-0" /> Yasa / Nutricionista
                                 </>
                               ) : (
                                 <>
-                                  <User className="h-2.5 w-2.5" /> Paciente
+                                  <User className="h-2.5 w-2.5 shrink-0" /> Paciente
                                 </>
                               )}
                             </span>
-                            <span>
+                            <span className="shrink-0">
                               {msg.timestamp
                                 ? format(new Date(msg.timestamp), 'HH:mm', { locale: ptBR })
                                 : ''}
                             </span>
                           </div>
 
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
 
-                          {/* Pin / Flag button on hover */}
-                          <div className="absolute -top-2.5 -right-2.5 hidden group-hover:flex items-center">
+                          {/* Pin / Flag button */}
+                          <div className="absolute -top-2.5 -right-2.5 flex opacity-0 group-hover:opacity-100 transition-opacity items-center">
                             <button
                               onClick={() => handleToggleFlag(msg.id, msg.flagged)}
                               className={`p-1 rounded-full shadow-md transition-colors ${
@@ -455,17 +501,17 @@ export default function Conversas() {
               </div>
 
               {/* Quick Replies Chips */}
-              <div className="px-3 pt-2 pb-1 border-t border-border/60 bg-muted/20">
+              <div className="px-3 pt-2 pb-1 border-t border-border/60 bg-muted/20 shrink-0">
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1 shrink-0 mr-1">
                     <Zap className="h-3 w-3 text-amber-500" />
-                    Respostas Rápidas:
+                    Atalhos:
                   </span>
                   {QUICK_REPLIES.map((reply, idx) => (
                     <button
                       key={idx}
                       onClick={() => setInputText(reply)}
-                      className="shrink-0 text-[11px] font-medium bg-background hover:bg-muted text-foreground border border-border/80 px-2.5 py-1 rounded-full transition-colors truncate max-w-[240px] shadow-2xs"
+                      className="shrink-0 text-[11px] font-medium bg-background hover:bg-muted text-foreground border border-border/80 px-2.5 py-1 rounded-full transition-colors truncate max-w-[200px] sm:max-w-[260px] shadow-2xs"
                       title={reply}
                     >
                       {reply}
@@ -475,7 +521,7 @@ export default function Conversas() {
               </div>
 
               {/* Chat Input Footer */}
-              <div className="p-3 border-t border-border bg-background flex items-center gap-2">
+              <div className="p-3 border-t border-border bg-background flex items-center gap-2 shrink-0">
                 <Input
                   placeholder="Digite sua mensagem ou escolha uma resposta rápida..."
                   value={inputText}
@@ -486,7 +532,7 @@ export default function Conversas() {
                       handleSend()
                     }
                   }}
-                  className="flex-1 rounded-xl h-10 text-xs"
+                  className="flex-1 rounded-xl h-10 text-xs min-w-0"
                 />
                 <Button
                   onClick={() => handleSend()}
@@ -494,7 +540,7 @@ export default function Conversas() {
                   className="rounded-xl h-10 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold flex items-center gap-1.5 shadow-subtle shrink-0"
                 >
                   <Send className="h-4 w-4" />
-                  <span>Enviar</span>
+                  <span className="hidden sm:inline">Enviar</span>
                 </Button>
               </div>
             </>

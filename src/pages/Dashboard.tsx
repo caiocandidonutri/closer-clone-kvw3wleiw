@@ -151,25 +151,28 @@ export default function Dashboard() {
   }, [contacts, patients])
 
   return (
-    <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto bg-background min-h-full">
+    <div className="p-4 sm:p-6 md:p-10 space-y-6 md:space-y-8 max-w-7xl mx-auto bg-background min-h-full min-w-0">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">
               Painel Nutri Responde
             </h1>
-            <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-200">
+            <Badge
+              variant="outline"
+              className="text-emerald-700 bg-emerald-50 border-emerald-200 shrink-0"
+            >
               <Sparkles className="h-3 w-3 mr-1 text-emerald-600" />
               Yasa AI Ativa
             </Badge>
           </div>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-xs sm:text-sm">
             Acompanhe em tempo real as conversas, limites de mensagens e receitas da sua clínica.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {/* Alternador Overview / Financeiro */}
           <div className="inline-flex rounded-xl p-1 bg-muted/60 border border-border">
             <button
@@ -198,7 +201,7 @@ export default function Dashboard() {
           <Button
             size="sm"
             onClick={() => navigate('/app/pacientes/novo')}
-            className="rounded-full shadow-subtle bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+            className="rounded-full shadow-subtle bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shrink-0"
           >
             <Plus className="h-4 w-4 mr-1.5" />
             Novo Paciente
@@ -211,15 +214,15 @@ export default function Dashboard() {
       ) : (
         <>
           {/* RESUMO DO DIA BANNER */}
-          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-emerald-500/5 to-primary/5 p-5 shadow-xs">
+          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-emerald-500/5 to-primary/5 p-4 sm:p-5 shadow-xs min-w-0">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
+              <div className="flex items-start sm:items-center gap-3.5 min-w-0">
                 <div className="h-10 w-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 shadow-xs">
                   <Calendar className="h-5 w-5" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                    Resumo do Dia
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2 flex-wrap">
+                    <span>Resumo do Dia</span>
                     <span className="text-[11px] font-normal text-muted-foreground">
                       (
                       {new Date().toLocaleDateString('pt-BR', {
@@ -230,25 +233,25 @@ export default function Dashboard() {
                       )
                     </span>
                   </h3>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                  <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
                     <span className="flex items-center gap-1 font-semibold text-foreground">
-                      <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                      <MessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
                       {todaySummary.spokeTodayCount}{' '}
                       {todaySummary.spokeTodayCount === 1
                         ? 'paciente falou hoje'
                         : 'pacientes falaram hoje'}
                     </span>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span className="flex items-center gap-1 font-semibold text-foreground">
-                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />
+                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                       {todaySummary.purchasesToday}{' '}
                       {todaySummary.purchasesToday === 1
                         ? 'compra/adesão hoje'
                         : 'compras/adesões hoje'}
                     </span>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                       {todaySummary.expiringSoonCount}{' '}
                       {todaySummary.expiringSoonCount === 1
                         ? 'plano expirando'
@@ -258,7 +261,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
@@ -282,7 +285,7 @@ export default function Dashboard() {
           </div>
 
           {/* KPI CARDS */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card
               className="border-border shadow-subtle hover:border-primary/40 transition-colors cursor-pointer rounded-2xl"
               onClick={() => navigate('/app/pacientes')}
@@ -291,7 +294,7 @@ export default function Dashboard() {
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Pacientes Ativos
                 </CardTitle>
-                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
                   <Users className="h-4 w-4" />
                 </div>
               </CardHeader>
@@ -311,7 +314,7 @@ export default function Dashboard() {
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Aguardando Resposta
                 </CardTitle>
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
                   <MessageSquare className="h-4 w-4" />
                 </div>
               </CardHeader>
@@ -331,7 +334,7 @@ export default function Dashboard() {
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Notificações Pendentes
                 </CardTitle>
-                <div className="p-2 rounded-xl bg-red-500/10 text-red-600">
+                <div className="p-2 rounded-xl bg-red-500/10 text-red-600 shrink-0">
                   <Bell className="h-4 w-4" />
                 </div>
               </CardHeader>
@@ -353,7 +356,7 @@ export default function Dashboard() {
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Triagem Pendente
                 </CardTitle>
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 shrink-0">
                   <CheckCircle2 className="h-4 w-4" />
                 </div>
               </CardHeader>
@@ -367,17 +370,17 @@ export default function Dashboard() {
           </div>
 
           {/* SEÇÃO PRINCIPAL: Pacientes Limite Quase Cheio + Ações Rápidas */}
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-3 min-w-0">
             {/* CARD: Pacientes com limite quase cheio (Ocupa 2 colunas) */}
-            <Card className="lg:col-span-2 border-border shadow-subtle rounded-2xl overflow-hidden">
+            <Card className="lg:col-span-2 border-border shadow-subtle rounded-2xl overflow-hidden min-w-0">
               <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 shrink-0">
                       <AlertTriangle className="h-5 w-5" />
                     </div>
-                    <div>
-                      <CardTitle className="text-base font-bold text-foreground">
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-foreground truncate">
                         Pacientes com Limite Quase Cheio
                       </CardTitle>
                       <p className="text-xs text-muted-foreground">
@@ -389,7 +392,7 @@ export default function Dashboard() {
                     variant="ghost"
                     size="sm"
                     onClick={() => navigate('/app/pacientes')}
-                    className="text-xs font-semibold text-primary hover:text-primary rounded-full"
+                    className="text-xs font-semibold text-primary hover:text-primary rounded-full shrink-0 self-start sm:self-center"
                   >
                     Ver todos
                     <ArrowRight className="h-3.5 w-3.5 ml-1" />
@@ -419,29 +422,29 @@ export default function Dashboard() {
                     return (
                       <div
                         key={p.id}
-                        className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/20 transition-colors"
+                        className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-muted/20 transition-colors min-w-0"
                       >
-                        <div className="space-y-1.5 flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-foreground truncate">
+                        <div className="space-y-2 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className="font-bold text-sm text-foreground truncate max-w-[220px]">
                               {p.name}
                             </span>
                             <Badge
                               variant="outline"
-                              className="text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-200"
+                              className="text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-200 shrink-0"
                             >
                               {pct}% usado
                             </Badge>
                             {p.subscription_plan && (
-                              <Badge variant="secondary" className="text-[10px]">
+                              <Badge variant="secondary" className="text-[10px] shrink-0">
                                 {p.subscription_plan}
                               </Badge>
                             )}
                           </div>
 
                           {/* Barra de progresso */}
-                          <div className="space-y-1 max-w-md">
-                            <div className="flex justify-between text-[11px] text-muted-foreground">
+                          <div className="space-y-1 w-full max-w-md">
+                            <div className="flex justify-between text-[11px] text-muted-foreground flex-wrap gap-1">
                               <span>
                                 {used} de {limit} mensagens usadas
                               </span>
@@ -464,12 +467,12 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-end md:self-center justify-end">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => navigate(`/app/pacientes/${p.id}/editar`)}
-                            className="rounded-full text-xs font-semibold"
+                            onClick={() => navigate(`/app/pacientes/${p.id}`)}
+                            className="rounded-full text-xs font-semibold h-8"
                           >
                             Ver ficha
                           </Button>
@@ -479,7 +482,7 @@ export default function Dashboard() {
                             size="sm"
                             onClick={() => handleQuickRelease(p)}
                             disabled={isReleasing}
-                            className="rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-subtle flex items-center gap-1.5"
+                            className="rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-subtle flex items-center gap-1.5 h-8"
                           >
                             {isReleasing ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -497,7 +500,7 @@ export default function Dashboard() {
             </Card>
 
             {/* CARD: Ações Rápidas & Atalhos */}
-            <Card className="border-border shadow-subtle rounded-2xl">
+            <Card className="border-border shadow-subtle rounded-2xl min-w-0">
               <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
                 <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
@@ -510,11 +513,11 @@ export default function Dashboard() {
                   onClick={() => navigate('/app/conversas')}
                   className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <MessageSquare className="h-4 w-4 text-emerald-600" />
-                    Conversas do WhatsApp
+                  <span className="flex items-center gap-2.5 truncate">
+                    <MessageSquare className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span className="truncate">Conversas do WhatsApp</span>
                   </span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                 </Button>
 
                 <Button
@@ -522,35 +525,35 @@ export default function Dashboard() {
                   onClick={() => navigate('/app/notifications')}
                   className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Bell className="h-4 w-4 text-amber-600" />
-                    Central de Notificações
+                  <span className="flex items-center gap-2.5 truncate">
+                    <Bell className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span className="truncate">Central de Notificações</span>
                   </span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                 </Button>
 
                 <Button
                   variant="outline"
-                  onClick={() => navigate('/app/receitas')}
+                  onClick={() => navigate('/app/recipes')}
                   className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    Banco de Receitas Fit
+                  <span className="flex items-center gap-2.5 truncate">
+                    <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                    <span className="truncate">Banco de Receitas Fit</span>
                   </span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                 </Button>
 
                 <Button
                   variant="outline"
-                  onClick={() => navigate('/app/configuracoes')}
+                  onClick={() => navigate('/app/settings')}
                   className="w-full justify-between rounded-xl h-12 text-sm font-semibold hover:bg-muted"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Zap className="h-4 w-4 text-purple-600" />
-                    Configuração da IA Yasa
+                  <span className="flex items-center gap-2.5 truncate">
+                    <Zap className="h-4 w-4 text-purple-600 shrink-0" />
+                    <span className="truncate">Configuração da IA Yasa</span>
                   </span>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                 </Button>
               </CardContent>
             </Card>

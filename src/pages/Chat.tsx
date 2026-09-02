@@ -175,41 +175,41 @@ export default function Chat() {
   })
 
   return (
-    <div className="max-w-5xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple flex">
-      <div className="flex-1 h-full flex flex-col bg-card border border-border/60 shadow-elevation rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-5 bg-background/50 backdrop-blur-xl border-b border-border/40 z-10 shrink-0">
-          <div className="flex items-center gap-3 sm:gap-4">
+    <div className="max-w-5xl mx-auto h-full p-2 sm:p-4 md:p-6 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple flex flex-col min-w-0">
+      <div className="flex-1 h-full min-h-[460px] md:min-h-0 flex flex-col bg-card border border-border/60 shadow-elevation rounded-2xl sm:rounded-[2rem] overflow-hidden min-w-0">
+        <div className="flex items-center justify-between px-3 py-2.5 sm:px-6 sm:py-4 bg-background/50 backdrop-blur-xl border-b border-border/40 z-10 shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full shrink-0 -ml-2 hover:bg-muted"
-              onClick={() => navigate('/app/contacts')}
+              className="rounded-full shrink-0 -ml-1 sm:-ml-2 hover:bg-muted h-8 w-8 sm:h-10 sm:w-10"
+              onClick={() => navigate('/app/conversas')}
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border border-border shadow-sm">
+            <Avatar className="h-9 w-9 sm:h-11 sm:w-11 border border-border shadow-sm shrink-0">
               <AvatarImage src={contact.avatar_url || ''} />
-              <AvatarFallback className="bg-muted text-foreground font-bold text-lg">
+              <AvatarFallback className="bg-muted text-foreground font-bold text-sm sm:text-base">
                 {contact.name?.charAt(0) || '#'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col max-w-[180px] sm:max-w-[260px]">
-              <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-sm sm:text-base tracking-tight truncate text-foreground leading-tight">
                 {contact.name || t('unknown')}
               </span>
-              <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
+              <span className="text-[11px] sm:text-xs font-semibold text-muted-foreground truncate">
                 {contact.whatsapp_id}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20">
-            <Sparkles className="h-4 w-4" />
-            <span className="text-[11px] sm:text-[13px] font-bold">Yasa IA</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-primary/10 text-primary px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full border border-primary/20 shrink-0">
+            <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="text-[11px] sm:text-xs font-bold">Yasa IA</span>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-zinc-50/30 dark:bg-background/30">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-6 bg-zinc-50/30 dark:bg-background/30 min-h-0">
           {loading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/40" />
@@ -222,7 +222,7 @@ export default function Chat() {
             Object.entries(grouped).map(([date, msgs]) => (
               <div key={date} className="space-y-4">
                 <div className="flex justify-center my-2">
-                  <span className="bg-card border border-border/40 text-muted-foreground text-[11px] font-bold px-3 py-1 rounded-full shadow-sm">
+                  <span className="bg-card border border-border/40 text-muted-foreground text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full shadow-sm">
                     {date}
                   </span>
                 </div>
@@ -233,7 +233,7 @@ export default function Chat() {
                       <div className={cn('flex w-full', isMe ? 'justify-end' : 'justify-start')}>
                         <div
                           className={cn(
-                            'max-w-[85%] sm:max-w-[70%] px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
+                            'max-w-[88%] sm:max-w-[70%] px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[13px] sm:text-[15px] leading-relaxed font-medium',
                             isMe
                               ? 'bg-primary text-primary-foreground rounded-br-sm'
                               : 'bg-card border border-border/60 text-foreground rounded-bl-sm',
@@ -325,17 +325,17 @@ export default function Chat() {
           )}
           {isYasaThinking && (
             <div className="flex justify-end">
-              <div className="bg-primary text-primary-foreground px-4 py-2.5 rounded-[1.25rem] sm:rounded-[1.5rem] rounded-br-sm shadow-sm flex items-center gap-2">
+              <div className="bg-primary text-primary-foreground px-4 py-2 rounded-[1.25rem] sm:rounded-[1.5rem] rounded-br-sm shadow-sm flex items-center gap-2 text-xs sm:text-sm font-medium">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span className="text-[13px] font-medium">{t('yasa_typing')}</span>
+                <span>{t('yasa_typing')}</span>
               </div>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-3 sm:p-5 bg-background/50 backdrop-blur-xl border-t border-border/40 shrink-0 z-10">
-          <form onSubmit={handleSend} className="flex gap-2.5 sm:gap-3 items-end">
+        <div className="p-2.5 sm:p-4 bg-background/50 backdrop-blur-xl border-t border-border/40 shrink-0 z-10">
+          <form onSubmit={handleSend} className="flex gap-2 sm:gap-3 items-center">
             <input
               ref={photoInputRef}
               type="file"
@@ -348,16 +348,16 @@ export default function Chat() {
               variant="outline"
               size="icon"
               onClick={() => photoInputRef.current?.click()}
-              className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl sm:rounded-full shrink-0"
+              className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-full shrink-0"
               title={t('attach_plan')}
             >
-              <ImageIcon className="h-5 w-5" />
+              <ImageIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={t('type_message')}
-              className="w-full bg-card border-border shadow-sm rounded-2xl sm:rounded-full h-12 sm:h-14 px-5 sm:px-6 text-[14px] sm:text-[15px] font-medium focus-visible:ring-primary/20 transition-all"
+              className="flex-1 bg-card border-border shadow-sm rounded-xl sm:rounded-full h-10 sm:h-12 px-4 sm:px-6 text-xs sm:text-sm font-medium focus-visible:ring-primary/20 transition-all min-w-0"
             />
             <Button
               type="button"
@@ -365,25 +365,25 @@ export default function Chat() {
               disabled={isYasaThinking || !newMessage.trim()}
               variant="secondary"
               size="icon"
-              className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl sm:rounded-full shrink-0"
+              className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-full shrink-0"
               title={t('ask_yasa')}
             >
               {isYasaThinking ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
               ) : (
-                <Sparkles className="h-5 w-5" />
+                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
               )}
             </Button>
             <Button
               type="submit"
               disabled={isSending || !newMessage.trim()}
               size="icon"
-              className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl sm:rounded-full shrink-0 shadow-subtle hover:scale-105 transition-all duration-300"
+              className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-full shrink-0 shadow-subtle hover:scale-105 transition-all duration-300 bg-primary text-primary-foreground"
             >
               {isSending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
               ) : (
-                <Send className="h-5 w-5 ml-0.5" />
+                <Send className="h-4 w-4 sm:h-5 sm:w-5 ml-0.5" />
               )}
             </Button>
           </form>
