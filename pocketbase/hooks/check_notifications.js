@@ -293,6 +293,7 @@ routerAdd(
         return e.json(403, { error: 'Acesso negado a esta notificação' })
       }
       notif.set('read', true)
+      notif.set('read_at', new Date().toISOString())
       $app.save(notif)
       return e.json(200, {
         success: true,
@@ -311,10 +312,10 @@ routerAdd(
   $apis.request(),
 )
 
-// Endpoint POST /backend/v1/notifications/read-all (convenience)
+// Endpoint POST /backend/v1/notifications-read-all
 routerAdd(
   'POST',
-  '/backend/v1/notifications/read-all',
+  '/backend/v1/notifications-read-all',
   (e) => {
     const authRecord = e.auth
     if (!authRecord || !authRecord.id) {
@@ -322,20 +323,36 @@ routerAdd(
     }
 
     const ownerId = authRecord.id
-    const filter = "owner = '" + ownerId + "' && read = false"
-
     try {
-      const unreadList = $app.findRecordsByFilter('notifications', filter, '-created', 500, 0) || []
+      const unreadList =
+        $app.findRecordsByFilter(
+          'notifications',
+          'owner = {:owner} && read = false',
+          '-created',
+          500,
+          0,
+          { owner: ownerId },
+        ) || []
+
+      let count = 0
       for (let i = 0; i < unreadList.length; i++) {
-        const n = unreadList[i]
-        n.set('read', true)
-        $app.save(n)
+        try {
+          const n = unreadList[i]
+          n.set('read', true)
+          n.set('read_at', new Date().toISOString())
+          $app.save(n)
+          count++
+        } catch (_) {}
       }
+
       return e.json(200, {
         success: true,
-        marked_count: unreadList.length,
+        marked_count: count,
       })
     } catch (err) {
+      console.log(
+        '[notifications] error mark-all: ' + (err && err.message ? err.message : String(err)),
+      )
       return e.json(500, { error: 'Erro ao marcar todas como lidas' })
     }
   },

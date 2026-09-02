@@ -61,12 +61,36 @@ export async function markNotificationRead(id: string): Promise<boolean> {
 export async function markAllNotificationsRead(): Promise<boolean> {
   if (!pb.authStore.isValid) return false
 
+  // 1. Tenta endpoint dedicado
   try {
-    await pb.send('/backend/v1/notifications/read-all', {
+    await pb.send('/backend/v1/notifications-read-all', {
       method: 'POST',
     })
     return true
-  } catch {
+  } catch (endpointErr) {
+    console.warn(
+      '[notificationsService] endpoint /notifications-read-all failed, fallback to direct collection update:',
+      endpointErr,
+    )
+  }
+
+  // 2. Fallback direto via SDK PocketBase (atualiza registros do usuário autenticado)
+  try {
+    const unreadRecords = await pb.collection('notifications').getFullList({
+      filter: 'read = false',
+      requestKey: null,
+    })
+    await Promise.all(
+      unreadRecords.map((rec) =>
+        pb
+          .collection('notifications')
+          .update(rec.id, { read: true, read_at: new Date().toISOString() })
+          .catch(() => null),
+      ),
+    )
+    return true
+  } catch (manualErr) {
+    console.error('[notificationsService] manual markAllRead error:', manualErr)
     return false
   }
 }

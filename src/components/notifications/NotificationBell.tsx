@@ -15,6 +15,7 @@ import {
   triggerNotificationCheck,
 } from '@/services/notifications'
 import type { AppNotification } from '@/lib/types'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -28,7 +29,14 @@ export function NotificationBell() {
   const navigate = useNavigate()
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
+  const isAuth = pb.authStore.isValid
+
   const loadNotifications = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setNotifications([])
+      setUnreadCount(0)
+      return
+    }
     try {
       // O sino busca apenas as 5 mais recentes para performance leve
       const res = await getNotifications(1, 5).catch(() => ({
@@ -44,16 +52,23 @@ export function NotificationBell() {
   }, [])
 
   useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
+    if (isAuth) {
+      loadNotifications()
+    }
+  }, [loadNotifications, isAuth])
 
   // Debounced realtime subscribe: não dispara re-fetch imediato a cada rajada de evento
-  useRealtime('notifications', () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      loadNotifications()
-    }, 400)
-  })
+  useRealtime(
+    'notifications',
+    () => {
+      if (!pb.authStore.isValid) return
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        loadNotifications()
+      }, 400)
+    },
+    isAuth,
+  )
 
   const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
