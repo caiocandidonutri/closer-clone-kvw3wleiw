@@ -10,6 +10,7 @@ import {
   sendNotificationWhatsapp,
 } from '@/services/notifications'
 import type { AppNotification, NotificationType } from '@/lib/types'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -81,30 +82,49 @@ export default function NotificationsPage() {
   // Confirmação de exclusão individual
   const [notifToDelete, setNotifToDelete] = useState<string | null>(null)
 
+  const isAuth = pb.authStore.isValid
+
   const loadData = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false)
+      setNotifications([])
+      return
+    }
     setLoading(true)
     try {
       // Carrega até 100 notificações mais recentes
-      const res = await getNotifications(1, 100)
-      setNotifications(res.items || [])
-    } catch (err) {
-      console.error('[NotificationsPage] load error:', err)
-      toast.error('Erro ao carregar notificações')
+      const res = await getNotifications(1, 100).catch(() => ({
+        items: [],
+        total: 0,
+        unread_count: 0,
+      }))
+      setNotifications(res?.items || [])
+    } catch {
+      // Falha silenciosa
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
-
-  useRealtime('notifications', () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
+    if (isAuth) {
       loadData()
-    }, 400)
-  })
+    } else {
+      setLoading(false)
+    }
+  }, [loadData, isAuth])
+
+  useRealtime(
+    'notifications',
+    () => {
+      if (!isAuth || !pb.authStore.isValid) return
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        loadData()
+      }, 400)
+    },
+    isAuth,
+  )
 
   const handleMarkRead = async (id: string) => {
     await markNotificationRead(id)
