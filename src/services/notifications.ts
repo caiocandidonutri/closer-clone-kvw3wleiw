@@ -8,6 +8,10 @@ export interface GetNotificationsResponse {
 }
 
 export async function getNotifications(page = 1, perPage = 50): Promise<GetNotificationsResponse> {
+  if (!pb.authStore.isValid) {
+    return { items: [], total: 0, unread_count: 0 }
+  }
+
   try {
     const records = await pb.collection('notifications').getList(page, perPage, {
       sort: '-created',
@@ -37,31 +41,32 @@ export async function getNotifications(page = 1, perPage = 50): Promise<GetNotif
 }
 
 export async function markNotificationRead(id: string): Promise<boolean> {
+  if (!pb.authStore.isValid) return false
+
   try {
     await pb.send(`/backend/v1/notifications/${id}/read`, {
       method: 'POST',
     })
     return true
-  } catch (err) {
-    console.warn('[notificationsService] markRead hook error, trying direct update:', err)
+  } catch {
     try {
       await pb.collection('notifications').update(id, { read: true })
       return true
-    } catch (updateErr) {
-      console.error('[notificationsService] direct update error:', updateErr)
+    } catch {
       return false
     }
   }
 }
 
 export async function markAllNotificationsRead(): Promise<boolean> {
+  if (!pb.authStore.isValid) return false
+
   try {
     await pb.send('/backend/v1/notifications/read-all', {
       method: 'POST',
     })
     return true
-  } catch (err) {
-    console.warn('[notificationsService] markAllRead hook error:', err)
+  } catch {
     return false
   }
 }
@@ -178,6 +183,10 @@ export async function triggerNotificationCheck(): Promise<{
   success: boolean
   created_count?: number
 }> {
+  if (!pb.authStore.isValid) {
+    return { success: false, created_count: 0 }
+  }
+
   try {
     const res = await pb.send<{ success: boolean; created_count: number }>(
       '/backend/v1/notifications/trigger-check',
@@ -186,8 +195,7 @@ export async function triggerNotificationCheck(): Promise<{
       },
     )
     return res
-  } catch (err) {
-    console.error('[notificationsService] triggerCheck error:', err)
-    return { success: false }
+  } catch {
+    return { success: false, created_count: 0 }
   }
 }

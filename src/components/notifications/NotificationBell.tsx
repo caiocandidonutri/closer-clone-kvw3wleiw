@@ -31,11 +31,15 @@ export function NotificationBell() {
   const loadNotifications = useCallback(async () => {
     try {
       // O sino busca apenas as 5 mais recentes para performance leve
-      const res = await getNotifications(1, 5)
+      const res = await getNotifications(1, 5).catch(() => ({
+        items: [],
+        total: 0,
+        unread_count: 0,
+      }))
       setNotifications(res.items || [])
       setUnreadCount(res.unread_count || 0)
-    } catch (err) {
-      console.error('[NotificationBell] load error:', err)
+    } catch {
+      // Falha silenciosa para não poluir console
     }
   }, [])
 
@@ -71,8 +75,10 @@ export function NotificationBell() {
     if (e) e.stopPropagation()
     setLoading(true)
     try {
-      await triggerNotificationCheck()
+      await triggerNotificationCheck().catch(() => ({ success: false }))
       await loadNotifications()
+    } catch {
+      // Falha silenciosa para não poluir console
     } finally {
       setLoading(false)
     }
