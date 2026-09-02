@@ -14,41 +14,13 @@ routerAdd(
   'GET',
   '/backend/v1/dashboard/revenue',
   (e) => {
-    let ownerId = ''
     const authRecord = e.auth
-    if (authRecord && authRecord.id) {
-      ownerId = authRecord.id
+    if (!authRecord || !authRecord.id) {
+      return e.json(401, { error: 'Não autorizado. Autenticação obrigatória.' })
     }
 
-    // Fallback: resolve admin/default owner if unauthenticated or single-tenant
-    if (!ownerId) {
-      try {
-        const integ = $app.findFirstRecordByFilter(
-          'integrations',
-          "status = 'CONNECTED'",
-          '-created',
-          1,
-          0,
-        )
-        if (integ) ownerId = integ.getString('owner')
-      } catch (_) {}
-    }
-
-    if (!ownerId) {
-      try {
-        const adminEmail =
-          $os.getenv('NUTRI_OWNER_EMAIL') ||
-          $secrets.get('NUTRI_OWNER_EMAIL') ||
-          'caiocandidonutri@hotmail.com'
-        const admin = $app.findAuthRecordByEmail('_pb_users_auth_', adminEmail)
-        if (admin) ownerId = admin.id
-      } catch (_) {}
-    }
-
-    let filter = ''
-    if (ownerId) {
-      filter = "owner = '" + ownerId + "'"
-    }
+    const ownerId = authRecord.id
+    const filter = "owner = '" + ownerId + "'"
 
     let patients = []
     try {

@@ -199,9 +199,16 @@ export default function Agents() {
                 />
               </div>
               <div className="space-y-3">
-                <Label htmlFor="api_key" className="font-semibold">
-                  {t('gemini_api_key')}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="api_key" className="font-semibold">
+                    {t('gemini_api_key')}
+                  </Label>
+                  {formData.gemini_api_key && formData.gemini_api_key.length > 6 && (
+                    <span className="text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-0.5 rounded-md">
+                      Ativa: ••••••{formData.gemini_api_key.slice(-4)}
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="api_key"
                   type="password"
@@ -210,6 +217,7 @@ export default function Agents() {
                   onChange={(e) => setFormData({ ...formData, gemini_api_key: e.target.value })}
                   placeholder="AIzaSy..."
                   className="rounded-xl h-12 font-mono text-sm"
+                  autoComplete="new-password"
                 />
                 <p className="text-[11px] text-muted-foreground font-medium">{t('api_key_help')}</p>
               </div>

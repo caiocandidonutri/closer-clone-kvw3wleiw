@@ -14,8 +14,107 @@
 // 4. Plan limits and resets
 
 routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
-  const raw = e.requestInfo().body
+  const reqInfo = e.requestInfo()
+  const raw = reqInfo.body
+  const rawString = typeof raw === 'string' ? raw : JSON.stringify(raw || {})
   const body = typeof raw === 'string' ? JSON.parse(raw) : raw || {}
+
+  // ── 1. Validação de Assinatura HMAC / Secret do Webhook Evolution ──
+  const evoWebhookSecret =
+    $secrets.get('EVOLUTION_WEBHOOK_SECRET') || $os.getenv('EVOLUTION_WEBHOOK_SECRET') || ''
+
+  if (evoWebhookSecret) {
+    const headers = reqInfo.headers || {}
+    const query = reqInfo.query || {}
+
+    // Headers comuns usados pela Evolution API ou proxies (X-Hub-Signature-256, X-Hub-Signature, apikey, token, query token)
+    const sigHeader =
+      headers['x-hub-signature-256'] ||
+      headers['x-hub-signature'] ||
+      headers['x-signature'] ||
+      headers['x-webhook-signature'] ||
+      ''
+    const tokenHeader =
+      headers['apikey'] ||
+      headers['authorization'] ||
+      headers['x-webhook-token'] ||
+      headers['x-api-key'] ||
+      ''
+    const queryToken = query.token || query.secret || query.apikey || ''
+
+    let signatureValid = false
+
+    // Se veio assinatura HMAC sha256 (ex: sha256=abcdef...)
+    if (sigHeader) {
+      const cleanSig = sigHeader
+        .replace(/^sha256=/i, '')
+        .trim()
+        .toLowerCase()
+      try {
+        const computedHmac = $security.hs256(rawString, evoWebhookSecret).toLowerCase()
+        if (cleanSig === computedHmac) {
+          signatureValid = true
+        }
+      } catch (err) {
+        console.log(
+          '[whatsapp_webhook] erro calculando HMAC: ' +
+            (err && err.message ? err.message : String(err)),
+        )
+      }
+    }
+
+    // Se a Evolution enviou via token direto no header ou query
+    if (!signatureValid && tokenHeader) {
+      const cleanToken = tokenHeader.replace(/^Bearer\s+/i, '').trim()
+      if (cleanToken === evoWebhookSecret) {
+        signatureValid = true
+      }
+    }
+
+    if (!signatureValid && queryToken && queryToken === evoWebhookSecret) {
+      signatureValid = true
+    }
+
+    if (!signatureValid) {
+      console.log('[whatsapp_webhook] 401 Não autorizado — assinatura HMAC ou segredo inválido')
+      return e.json(401, {
+        error: 'Não autorizado: assinatura HMAC ou segredo do webhook inválido',
+        success: false,
+      })
+    }
+  }
+
+  // ── 2. Rate Limiting Básico (Proteção contra flooding de mensagens no mesmo segundo) ──
+  try {
+    const remoteIp = reqInfo.remoteIP || reqInfo.headers['x-forwarded-for'] || 'evolution-webhook'
+    // Verifica contagem de mensagens recebidas nos últimos 60 segundos
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19)
+    const recentMessages =
+      $app.findRecordsByFilter(
+        'messages',
+        "created >= {:since} && role = 'user'",
+        '-created',
+        120,
+        0,
+        { since: oneMinuteAgo },
+      ) || []
+
+    // Limite generoso para webhook institucional (máx 100 msgs/minuto no cluster)
+    if (recentMessages.length > 100) {
+      console.log(
+        '[whatsapp_webhook] Rate limit atingido para webhook: ' +
+          recentMessages.length +
+          ' msgs no último minuto',
+      )
+      return e.json(429, {
+        error: 'Muitas requisições. Rate limit excedido para o webhook.',
+        success: false,
+      })
+    }
+  } catch (_) {}
 
   const event = (body.event || '').toString().toUpperCase()
   const instance = (body.instance || '').toString()

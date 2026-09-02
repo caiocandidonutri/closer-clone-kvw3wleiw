@@ -275,19 +275,28 @@ export function YasaAgentConfig() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="openai_key" className="font-semibold">
-                {t('yasa_openai_key')}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="openai_key" className="font-semibold">
+                  {t('yasa_openai_key')}
+                </Label>
+                {form.openai_api_key && form.openai_api_key.length > 8 && (
+                  <span className="text-xs text-muted-foreground font-mono bg-muted/60 px-2 py-0.5 rounded-md">
+                    Chave ativa: ••••••••••••{form.openai_api_key.slice(-4)}
+                  </span>
+                )}
+              </div>
               <Input
                 id="openai_key"
                 type="password"
                 value={form.openai_api_key}
                 onChange={(e) => setForm({ ...form, openai_api_key: e.target.value })}
-                placeholder="sk-..."
+                placeholder="sk-... (digite nova chave ou mantenha a atual)"
                 className="rounded-xl h-12 font-mono"
+                autoComplete="new-password"
               />
               <p className="text-[11px] text-muted-foreground font-medium">
-                {t('yasa_openai_key_help')}
+                {t('yasa_openai_key_help')} (O valor completo é armazenado com segurança e nunca
+                exposto publicamente).
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

@@ -23,39 +23,95 @@
 //     "Olá [nome]! 🎉 O Dr. Caio Cândido te dá as boas-vindas ao Nutri Responde! Sua assistente Yasa já está pronta para te ajudar. Que tal começar me contando qual é o seu principal objetivo? 💚"
 
 routerAdd('POST', '/backend/v1/patients/register', (e) => {
-  const raw = e.requestInfo().body
+  const reqInfo = e.requestInfo()
+  const raw = reqInfo.body
   const body = typeof raw === 'string' ? JSON.parse(raw) : raw || {}
 
-  const name = (body.name || '').toString().trim()
+  // ── Rate Limiting por hora na coleção patients ──
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19)
+    const recentRegistrations =
+      $app.findRecordsByFilter('patients', 'created >= {:since}', '-created', 50, 0, {
+        since: oneHourAgo,
+      }) || []
+
+    // Limite de segurança: máx 30 novos cadastros por hora globalmente na API pública
+    if (recentRegistrations.length >= 30) {
+      console.log(
+        '[patient_register] Rate limit atingido: ' +
+          recentRegistrations.length +
+          ' cadastros nos últimos 60 min',
+      )
+      return e.json(429, {
+        success: false,
+        error:
+          'Muitas solicitações de cadastro recentemente. Por favor, tente novamente em alguns minutos.',
+      })
+    }
+  } catch (_) {}
+
+  // ── Sanitização e Validação de Campos ──
+  let rawName = (body.name || '').toString().trim()
+  // Sanitizar caracteres perigosos no nome
+  rawName = rawName.replace(/[<>\"\'\`\\]/g, '').trim()
+  if (!rawName || rawName.length < 2) {
+    return e.json(400, { success: false, error: 'Nome é obrigatório (mínimo 2 caracteres)' })
+  }
+  if (rawName.length > 100) {
+    rawName = rawName.slice(0, 100)
+  }
+  const name = rawName
+
   const phoneRaw = (body.phone || body.phoneNumber || body.whatsapp || '').toString().trim()
-  const email = (body.email || '').toString().trim()
-  const nutritionalGoal = (body.nutritional_goal || body.nutritionalGoal || body.goal || '')
-    .toString()
-    .trim()
-  let planSlug = (body.subscription_plan || body.subscriptionPlan || body.plan || 'free_trial')
-    .toString()
-    .trim()
-    .toLowerCase()
-
-  if (planSlug === 'free') {
-    planSlug = 'free_trial'
-  }
-
-  if (!name) {
-    return e.json(400, { success: false, error: 'Nome é obrigatório' })
-  }
   if (!phoneRaw) {
     return e.json(400, { success: false, error: 'Telefone (WhatsApp) é obrigatório' })
   }
 
-  // Normalize BR phone number
+  // Sanitizar e normalizar telefone (BR)
   let phone = phoneRaw.replace(/\D/g, '')
   if (phone.length > 0 && phone.indexOf('55') !== 0 && phone.length <= 11) {
     phone = '55' + phone
   }
 
-  if (phone.length < 10) {
-    return e.json(400, { success: false, error: 'Telefone inválido' })
+  if (phone.length < 10 || phone.length > 15) {
+    return e.json(400, {
+      success: false,
+      error: 'Número de WhatsApp inválido (deve conter DDD + número)',
+    })
+  }
+
+  // Sanitizar e validar email (se fornecido)
+  let rawEmail = (body.email || '').toString().trim().toLowerCase()
+  if (rawEmail) {
+    rawEmail = rawEmail.replace(/[<>\"\'\`\\]/g, '').trim()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(rawEmail)) {
+      return e.json(400, { success: false, error: 'Formato de e-mail inválido' })
+    }
+  }
+  const email = rawEmail
+
+  // Sanitizar objetivo nutricional
+  let rawGoal = (body.nutritional_goal || body.nutritionalGoal || body.goal || '').toString().trim()
+  rawGoal = rawGoal.replace(/[<>\"\'\`\\]/g, '').trim()
+  if (rawGoal.length > 300) rawGoal = rawGoal.slice(0, 300)
+  const nutritionalGoal = rawGoal
+
+  let planSlug = (body.subscription_plan || body.subscriptionPlan || body.plan || 'free_trial')
+    .toString()
+    .trim()
+    .toLowerCase()
+
+  const allowedPlans = ['free_trial', 'free', 'weekly', 'monthly', 'quarterly']
+  if (!allowedPlans.includes(planSlug)) {
+    planSlug = 'free_trial'
+  }
+
+  if (planSlug === 'free') {
+    planSlug = 'free_trial'
   }
 
   // ── Resolve Owner User (Dr. Caio) ──

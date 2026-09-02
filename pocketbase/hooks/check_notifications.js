@@ -227,40 +227,13 @@ routerAdd(
   'GET',
   '/backend/v1/notifications',
   (e) => {
-    let ownerId = ''
     const authRecord = e.auth
-    if (authRecord && authRecord.id) {
-      ownerId = authRecord.id
+    if (!authRecord || !authRecord.id) {
+      return e.json(401, { error: 'Não autorizado. Autenticação obrigatória.' })
     }
 
-    if (!ownerId) {
-      try {
-        const integ = $app.findFirstRecordByFilter(
-          'integrations',
-          "status = 'CONNECTED'",
-          '-created',
-          1,
-          0,
-        )
-        if (integ) ownerId = integ.getString('owner')
-      } catch (_) {}
-    }
-
-    if (!ownerId) {
-      try {
-        const adminEmail =
-          $os.getenv('NUTRI_OWNER_EMAIL') ||
-          $secrets.get('NUTRI_OWNER_EMAIL') ||
-          'caiocandidonutri@hotmail.com'
-        const admin = $app.findAuthRecordByEmail('_pb_users_auth_', adminEmail)
-        if (admin) ownerId = admin.id
-      } catch (_) {}
-    }
-
-    let filter = ''
-    if (ownerId) {
-      filter = "owner = '" + ownerId + "'"
-    }
+    const ownerId = authRecord.id
+    const filter = "owner = '" + ownerId + "'"
 
     try {
       const records = $app.findRecordsByFilter('notifications', filter, '-created', 100, 0) || []
@@ -304,6 +277,11 @@ routerAdd(
   'POST',
   '/backend/v1/notifications/{id}/read',
   (e) => {
+    const authRecord = e.auth
+    if (!authRecord || !authRecord.id) {
+      return e.json(401, { error: 'Não autorizado. Autenticação obrigatória.' })
+    }
+
     const id = e.requestInfo().pathParams.id
     if (!id) {
       return e.json(400, { error: 'ID da notificação é obrigatório' })
@@ -311,6 +289,9 @@ routerAdd(
 
     try {
       const notif = $app.findRecordById('notifications', id)
+      if (notif.getString('owner') !== authRecord.id) {
+        return e.json(403, { error: 'Acesso negado a esta notificação' })
+      }
       notif.set('read', true)
       $app.save(notif)
       return e.json(200, {
@@ -335,27 +316,13 @@ routerAdd(
   'POST',
   '/backend/v1/notifications/read-all',
   (e) => {
-    let ownerId = ''
     const authRecord = e.auth
-    if (authRecord && authRecord.id) {
-      ownerId = authRecord.id
+    if (!authRecord || !authRecord.id) {
+      return e.json(401, { error: 'Não autorizado. Autenticação obrigatória.' })
     }
 
-    if (!ownerId) {
-      try {
-        const adminEmail =
-          $os.getenv('NUTRI_OWNER_EMAIL') ||
-          $secrets.get('NUTRI_OWNER_EMAIL') ||
-          'caiocandidonutri@hotmail.com'
-        const admin = $app.findAuthRecordByEmail('_pb_users_auth_', adminEmail)
-        if (admin) ownerId = admin.id
-      } catch (_) {}
-    }
-
-    let filter = 'read = false'
-    if (ownerId) {
-      filter = "owner = '" + ownerId + "' && read = false"
-    }
+    const ownerId = authRecord.id
+    const filter = "owner = '" + ownerId + "' && read = false"
 
     try {
       const unreadList = $app.findRecordsByFilter('notifications', filter, '-created', 500, 0) || []
@@ -380,14 +347,22 @@ routerAdd(
   'POST',
   '/backend/v1/notifications/trigger-check',
   (e) => {
+    const authRecord = e.auth
+    if (!authRecord || !authRecord.id) {
+      return e.json(401, { error: 'Não autorizado. Autenticação obrigatória.' })
+    }
+
+    const currentOwnerId = authRecord.id
+
     try {
       const patients =
         $app.findRecordsByFilter(
           'patients',
-          "status = 'active' || status = 'trial'",
+          "(status = 'active' || status = 'trial') && owner = {:owner}",
           '',
           1000,
           0,
+          { owner: currentOwnerId },
         ) || []
       const now = new Date()
       const nowMs = now.getTime()

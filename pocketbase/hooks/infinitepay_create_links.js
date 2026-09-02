@@ -54,10 +54,18 @@ routerAdd(
     // Webhook + redirect URLs: the platform's public webhook endpoint. The
     // InfinitePay dashboard was configured with this exact URL, so we send it
     // verbatim (no query string) unless an explicit override is provided.
-    const webhookUrl =
-      explicitWebhook || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
-    const redirectUrl =
-      explicitRedirect || 'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay'
+    const webhookSecret =
+      $os.getenv('INFINITEPAY_WEBHOOK_SECRET') || $secrets.get('INFINITEPAY_WEBHOOK_SECRET') || ''
+
+    let defaultWebhookUrl =
+      'https://nutriresponde.goskip.app/backend/v1/webhook/infinitepay?handle=' +
+      encodeURIComponent(handle)
+    if (webhookSecret) {
+      defaultWebhookUrl += '&secret=' + encodeURIComponent(webhookSecret)
+    }
+
+    const webhookUrl = explicitWebhook || defaultWebhookUrl
+    const redirectUrl = explicitRedirect || 'https://nutriresponde.goskip.app/#planos'
 
     console.log(
       '[infinitepay_create_links] handle=' +

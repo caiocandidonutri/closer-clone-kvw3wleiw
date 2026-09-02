@@ -65,15 +65,76 @@ routerAdd('POST', '/backend/v1/webhook/infinitepay', (e) => {
       '"',
   )
 
+  // ── Rate Limiting (Proteção contra requisições excessivas) ──
+  const reqInfo = e.requestInfo()
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19)
+    const recentPatientsCount =
+      $app.findRecordsByFilter(
+        'patients',
+        "created >= {:since} && infinitepay_transaction_nsu != ''",
+        '-created',
+        60,
+        0,
+        { since: oneHourAgo },
+      ) || []
+
+    if (recentPatientsCount.length >= 60) {
+      console.log('[infinitepay_webhook] Rate limit atingido para webhook InfinitePay')
+      return e.json(429, {
+        success: false,
+        message: 'Limite de requisições excedido. Tente novamente mais tarde.',
+      })
+    }
+  } catch (_) {}
+
   // ── Validate the request ──
-  // InfinitePay's checkout webhook is not signed, so we trust requests that
-  // carry our handle as a query param (?handle=caio_candido_mac) OR that map
-  // to one of our known order_nsu values / plan prices. Anything else is
-  // rejected with 400 so InfinitePay can retry.
+  // Correção de segurança: Exigir handle SEMPRE (remover fallback !queryHandle)
+  // e validar contra o segredo INFINITEPAY_WEBHOOK_SECRET ou INFINITEPAY_HANDLE.
   const expectedHandle =
     $os.getenv('INFINITEPAY_HANDLE') || $secrets.get('INFINITEPAY_HANDLE') || 'caio_candido_mac'
-  const queryHandle = (e.requestInfo().query && e.requestInfo().query.handle) || ''
-  const handleOk = !queryHandle || queryHandle === expectedHandle
+  const expectedSecret =
+    $os.getenv('INFINITEPAY_WEBHOOK_SECRET') || $secrets.get('INFINITEPAY_WEBHOOK_SECRET') || ''
+
+  const queryHandle = (reqInfo.query && reqInfo.query.handle) || ''
+  const querySecret = (reqInfo.query && (reqInfo.query.secret || reqInfo.query.token)) || ''
+  const headerSecret =
+    (reqInfo.headers &&
+      (reqInfo.headers['x-webhook-secret'] ||
+        reqInfo.headers['x-api-key'] ||
+        reqInfo.headers['authorization'])) ||
+    ''
+
+  // Validação estrita: queryHandle PRECISA ser enviado e bater com expectedHandle
+  const handleOk = !!queryHandle && queryHandle === expectedHandle
+
+  // Validação do segredo (se INFINITEPAY_WEBHOOK_SECRET estiver configurado)
+  let secretOk = true
+  if (expectedSecret) {
+    const cleanHeaderSecret = headerSecret.replace(/^Bearer\s+/i, '').trim()
+    secretOk = querySecret === expectedSecret || cleanHeaderSecret === expectedSecret
+  }
+
+  if (!handleOk || !secretOk) {
+    console.log(
+      '[infinitepay_webhook] 401 Não autorizado: handleOk=' +
+        handleOk +
+        ' (queryHandle="' +
+        queryHandle +
+        '", expected="' +
+        expectedHandle +
+        '")' +
+        ' secretOk=' +
+        secretOk,
+    )
+    return e.json(401, {
+      success: false,
+      message: 'Não autorizado: handle ou segredo do webhook InfinitePay ausente ou inválido',
+    })
+  }
 
   // Resolve which subscription plan this payment is for.
   // 1) order_nsu → plan slug  (preferred, deterministic)
@@ -98,17 +159,20 @@ routerAdd('POST', '/backend/v1/webhook/infinitepay', (e) => {
     else if (d.indexOf('mensal') >= 0) planSlug = 'monthly'
   }
 
-  if (!handleOk || !planSlug) {
+  if (!planSlug) {
     console.log(
-      '[infinitepay_webhook] rejected: handleOk=' +
-        handleOk +
-        ' planSlug="' +
-        planSlug +
-        '" order_nsu="' +
+      '[infinitepay_webhook] plano não identificado: order_nsu="' +
         orderNsu +
+        '" itemPrice=' +
+        itemPrice +
+        ' itemDesc="' +
+        itemDesc +
         '"',
     )
-    return e.json(400, { success: false, message: 'Pedido não encontrado' })
+    return e.json(400, {
+      success: false,
+      message: 'Plano correspondente ao pedido não identificado',
+    })
   }
 
   // ── Resolve the plan record + owner (the Dr. Caio seed user) ──
