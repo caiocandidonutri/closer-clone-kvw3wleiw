@@ -10,7 +10,7 @@ import {
   sendNotificationWhatsapp,
 } from '@/services/notifications'
 import type { AppNotification, NotificationType } from '@/lib/types'
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'

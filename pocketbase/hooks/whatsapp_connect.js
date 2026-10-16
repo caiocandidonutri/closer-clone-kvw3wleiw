@@ -35,7 +35,11 @@ routerAdd(
       return e.json(500, { error: 'Evolution API not configured. Contact support.' })
     }
 
-    var pbUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
+    var pbUrl = (
+      $secrets.get('PB_INSTANCE_URL') ||
+      $os.getenv('PB_INSTANCE_URL') ||
+      'https://warm-market-crm-clone-7c1f6.shrd02.internal.goskip.dev'
+    ).replace(/\/$/, '')
     var webhookUrl = pbUrl + '/backend/v1/webhook/evolution'
 
     console.log(
@@ -99,6 +103,27 @@ routerAdd(
       } catch (_) {}
       var st =
         stateData.instance && stateData.instance.state ? stateData.instance.state : stateData.state
+
+      // Garante que o webhook está configurado mesmo se a instância já estiver aberta/conectada
+      try {
+        $http.send({
+          url: evoUrl + '/webhook/set/' + instanceName,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: evoKey },
+          body: JSON.stringify({
+            webhook: {
+              enabled: true,
+              url: webhookUrl,
+              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+            },
+          }),
+          timeout: 20,
+        })
+        integ.set('webhook_url', webhookUrl)
+      } catch (wbErr) {
+        console.log('[whatsapp_connect] webhook set on already open instance error:', wbErr)
+      }
+
       if (st === 'open') {
         integ.set('status', 'CONNECTED')
         $app.save(integ)

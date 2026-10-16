@@ -64,9 +64,9 @@ export async function getPublicStats(): Promise<PublicStats> {
     /* intentionally ignored */
   }
   return {
-    total_patients: 184,
-    active_subscribers: 142,
-    total_messages: 24500,
+    total_patients: 0,
+    active_subscribers: 0,
+    total_messages: 0,
   }
 }
 

@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { getPublicSubscriptionPlans, getPublicStats, PublicStats } from '@/services/patients'
+import { getPublicSubscriptionPlans } from '@/services/patients'
 import { SubscriptionPlan, FALLBACK_PLANS, resolveCheckoutUrl } from '@/lib/mercadopago'
 
 // ── Comparison Table Matrix ──
@@ -122,11 +122,6 @@ const COMPARISON_FEATURES: FeatureRow[] = [
 
 export default function Index() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>(FALLBACK_PLANS)
-  const [stats, setStats] = useState<PublicStats>({
-    total_patients: 184,
-    active_subscribers: 142,
-    total_messages: 24500,
-  })
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   useEffect(() => {
@@ -137,14 +132,6 @@ export default function Index() {
           const order = ['free_trial', 'weekly', 'monthly', 'quarterly']
           const sorted = [...data].sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug))
           setPlans(sorted)
-        }
-      })
-      .catch(() => {})
-
-    getPublicStats()
-      .then((st) => {
-        if (isMounted && st && (st.total_patients > 0 || st.active_subscribers > 0)) {
-          setStats(st)
         }
       })
       .catch(() => {})
@@ -315,9 +302,7 @@ export default function Index() {
             <div className="pt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs sm:text-sm text-emerald-200/80 border-t border-emerald-800/40 mt-8">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
-                <span>
-                  + {stats.total_patients > 0 ? stats.total_patients : 180} pacientes acompanhados
-                </span>
+                <span>Atendimento personalizado 24h no WhatsApp</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#25D366]" />
@@ -814,18 +799,15 @@ export default function Index() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-5 space-y-4">
                 <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-xs">
-                  Resultados Reais
+                  Cuidado Contínuo
                 </Badge>
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
-                  Mais de{' '}
-                  <span className="text-[#25D366]">
-                    {stats.total_patients > 0 ? stats.total_patients : 180} pacientes
-                  </span>{' '}
-                  já confiam na Yasa diariamente
+                  Atendimento humanizado e{' '}
+                  <span className="text-[#25D366]">respostas instantâneas</span> para a sua saúde
                 </h2>
                 <p className="text-emerald-200/75 text-sm leading-relaxed">
-                  Pacientes que transformaram sua rotina alimentar, aprenderam a fazer escolhas
-                  conscientes e contam com o apoio instantâneo de um protocolo clínico validado.
+                  Transforme sua rotina alimentar com orientações práticas, escolhas conscientes e o
+                  apoio instantâneo de um protocolo clínico validado.
                 </p>
                 <div className="pt-2 flex items-center gap-4">
                   <div className="flex -space-x-2 overflow-hidden">
@@ -852,7 +834,9 @@ export default function Index() {
                   </div>
                   <div className="text-xs">
                     <div className="flex text-amber-400">★★★★★</div>
-                    <span className="text-emerald-200/80 font-medium">4.9/5 em satisfação</span>
+                    <span className="text-emerald-200/80 font-medium">
+                      Excelência e acolhimento
+                    </span>
                   </div>
                 </div>
               </div>
@@ -883,9 +867,7 @@ export default function Index() {
                     </Avatar>
                     <div>
                       <div className="text-xs font-bold text-white">Juliana M.</div>
-                      <div className="text-[10px] text-emerald-300">
-                        Assinante Plano Mensal há 3 meses
-                      </div>
+                      <div className="text-[10px] text-emerald-300">Assinante Plano Mensal</div>
                     </div>
                   </div>
                   <p className="text-xs text-emerald-100/90 italic">
