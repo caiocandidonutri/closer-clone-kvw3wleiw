@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getPublicSubscriptionPlans, getPublicStats, PublicStats } from '@/services/patients'
 import { SubscriptionPlan, FALLBACK_PLANS, resolveCheckoutUrl } from '@/lib/mercadopago'
 
@@ -828,26 +829,26 @@ export default function Index() {
                 </p>
                 <div className="pt-2 flex items-center gap-4">
                   <div className="flex -space-x-2 overflow-hidden">
-                    <img
-                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://randomuser.me/api/portraits/women/44.jpg"
-                      alt="Paciente"
-                    />
-                    <img
-                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://randomuser.me/api/portraits/women/68.jpg"
-                      alt="Paciente"
-                    />
-                    <img
-                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://randomuser.me/api/portraits/women/33.jpg"
-                      alt="Paciente"
-                    />
-                    <img
-                      className="inline-block h-10 w-10 rounded-full ring-2 ring-emerald-950"
-                      src="https://randomuser.me/api/portraits/women/17.jpg"
-                      alt="Paciente"
-                    />
+                    <Avatar className="h-10 w-10 ring-2 ring-emerald-950 shrink-0">
+                      <AvatarFallback className="bg-emerald-800 text-emerald-100 font-bold text-xs">
+                        AM
+                      </AvatarFallback>
+                    </Avatar>
+                    <Avatar className="h-10 w-10 ring-2 ring-emerald-950 shrink-0">
+                      <AvatarFallback className="bg-teal-700 text-teal-100 font-bold text-xs">
+                        CL
+                      </AvatarFallback>
+                    </Avatar>
+                    <Avatar className="h-10 w-10 ring-2 ring-emerald-950 shrink-0">
+                      <AvatarFallback className="bg-emerald-700 text-emerald-100 font-bold text-xs">
+                        BF
+                      </AvatarFallback>
+                    </Avatar>
+                    <Avatar className="h-10 w-10 ring-2 ring-emerald-950 shrink-0">
+                      <AvatarFallback className="bg-[#128C7E] text-white font-bold text-xs">
+                        RS
+                      </AvatarFallback>
+                    </Avatar>
                   </div>
                   <div className="text-xs">
                     <div className="flex text-amber-400">★★★★★</div>
@@ -875,11 +876,11 @@ export default function Index() {
 
                 <div className="rounded-2xl bg-emerald-950/80 border border-emerald-800/50 p-5 space-y-2 sm:col-span-2">
                   <div className="flex items-center gap-3">
-                    <img
-                      src="https://randomuser.me/api/portraits/women/55.jpg"
-                      alt="Juliana M."
-                      className="w-9 h-9 rounded-full object-cover"
-                    />
+                    <Avatar className="w-9 h-9 border border-emerald-500/40 shrink-0">
+                      <AvatarFallback className="bg-emerald-700 text-white font-bold text-xs">
+                        JM
+                      </AvatarFallback>
+                    </Avatar>
                     <div>
                       <div className="text-xs font-bold text-white">Juliana M.</div>
                       <div className="text-[10px] text-emerald-300">
